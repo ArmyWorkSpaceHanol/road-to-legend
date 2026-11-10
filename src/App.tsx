@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import CareerCreation from './CareerCreation';
 import type { NewPlayer } from './CareerCreation';
+import { CareerHealth, CareerPath, LifeOverview, RosterReport } from './CareerLife';
 import {
   Activity,
   ArrowDown,
@@ -20,6 +21,7 @@ import {
   Dumbbell,
   Flame,
   Globe2,
+  GraduationCap,
   History,
   LayoutDashboard,
   Menu,
@@ -42,9 +44,11 @@ import {
   emptyPitch,
   innings,
   internationalEligibility,
+  LEAGUE_LABELS,
   makeCareer,
   money,
   nextSeason,
+  needsCareerDecision,
   overall,
   parseSave,
   PITCHER_LABELS,
@@ -56,6 +60,8 @@ import {
   SEASON_GAMES,
   SKILL_LABELS,
   SUPPORTS,
+  stageLabel,
+  trainingCost,
   TALENTS,
   totals,
 } from './game';
@@ -78,7 +84,7 @@ const NAV: { id: Page; label: string; english: string; icon: typeof Trophy }[] =
   { id: 'records', label: '나의 기록실', english: 'MY STATS', icon: BarChart3 },
   { id: 'leaders', label: '리그 순위', english: 'LEAGUE', icon: Users },
   { id: 'awards', label: '시상식', english: 'AWARDS', icon: Trophy },
-  { id: 'market', label: '계약 · 해외 진출', english: 'CONTRACT', icon: Globe2 },
+  { id: 'market', label: '진로 · 계약', english: 'CAREER PATH', icon: Globe2 },
   { id: 'career', label: '커리어 히스토리', english: 'CAREER', icon: History },
 ];
 const POSITION: Record<string, string> = {
@@ -413,6 +419,9 @@ export default function App() {
     [mobileNav, setMobileNav] = useState(false);
   const [recordYear, setRecordYear] = useState('latest'),
     [leagueTab, setLeagueTab] = useState<'standings' | 'batting' | 'pitching'>('standings');
+  const [recordLevel, setRecordLevel] = useState<'first' | 'second' | 'amateur'>(
+    initial.state.player.stage === 'pro' ? 'first' : 'amateur',
+  );
   const inputRef = useRef<HTMLInputElement>(null),
     latest = state.history.at(-1),
     player = state.player;
@@ -423,8 +432,13 @@ export default function App() {
     recordYear === 'latest' ? latest : state.history.find((h) => String(h.year) === recordYear);
   const recordStats =
     recordYear === 'all'
-      ? total
-      : (recordSeason ?? { batting: emptyBat(), pitching: emptyPitch(), war: 0 });
+      ? totals(state.history, recordLevel)
+      : recordSeason &&
+          (recordLevel === 'amateur' ? recordSeason.stage !== 'pro' : recordSeason.stage === 'pro')
+        ? recordLevel === 'second'
+          ? { batting: recordSeason.minorBatting, pitching: recordSeason.minorPitching, war: 0 }
+          : recordSeason
+        : { batting: emptyBat(), pitching: emptyPitch(), war: 0 };
   const preseason = state.phase === 'preseason';
   const navigate = (to: Page) => {
     setPage(to);
@@ -488,6 +502,11 @@ export default function App() {
       if (saveError) notify('데이터 보호를 위해 백업을 불러오거나 새 커리어를 만들어주세요.');
       return;
     }
+    if (needsCareerDecision(state)) {
+      navigate('market');
+      notify('진로를 결정한 뒤 다음 시즌을 준비해주세요.');
+      return;
+    }
     setBusy(true);
     const run = ++simulationId.current;
     window.setTimeout(
@@ -497,6 +516,7 @@ export default function App() {
           if (preseason) {
             const next = playSeason(state);
             setState(next);
+            setRecordLevel(next.player.stage === 'pro' ? 'first' : 'amateur');
             notify(`${state.year} 시즌이 끝났습니다. 기록과 시상식을 확인해보세요!`);
           } else if (state.phase === 'offseason') {
             setState(nextSeason(state));
@@ -540,6 +560,7 @@ export default function App() {
       simulationId.current++;
       setBusy(false);
       setState(imported);
+      setRecordLevel(imported.player.stage === 'pro' ? 'first' : 'amateur');
       setModal(null);
       setPage('home');
       setRecordYear('latest');
@@ -554,9 +575,18 @@ export default function App() {
     simulationId.current++;
     setBusy(false);
     setState(
-      makeCareer(newPlayer.name, newPlayer.role, newPlayer.position, newPlayer.team, seed, card),
+      makeCareer(
+        newPlayer.name,
+        newPlayer.role,
+        newPlayer.position,
+        newPlayer.team,
+        seed,
+        card,
+        newPlayer.school,
+      ),
     );
     setHasCareer(true);
+    setRecordLevel('amateur');
     setSaveError(null);
     setModal(null);
     setPage('home');
@@ -580,9 +610,11 @@ export default function App() {
         ? '시즌 시뮬레이션 중…'
         : state.phase === 'retired'
           ? '완성된 나의 야구 인생'
-          : preseason
-            ? `${state.year} 시즌 진행`
-            : `${state.year + 1} 시즌 준비`}{' '}
+          : needsCareerDecision(state)
+            ? '진로 선택하기'
+            : preseason
+              ? `${state.year} 시즌 진행`
+              : `${state.year + 1} 시즌 준비`}{' '}
       {!busy && <span>{preseason ? 'PLAY SEASON' : 'NEXT SEASON'}</span>}
     </button>
   );
@@ -618,8 +650,12 @@ export default function App() {
             >
               <item.icon size={18} strokeWidth={1.7} />
               <span>{item.label}</span>
-              {item.id === 'market' && state.phase === 'offseason' ? (
-                <span className="nav-count">{state.offers.length}</span>
+              {item.id === 'market' &&
+              state.phase === 'offseason' &&
+              (state.offers.length > 0 || needsCareerDecision(state)) ? (
+                <span className="nav-count">
+                  {needsCareerDecision(state) ? '!' : state.offers.length}
+                </span>
               ) : page === item.id ? (
                 <span className="nav-dot" />
               ) : null}
@@ -644,7 +680,7 @@ export default function App() {
             <CircleHelp size={16} /> 플레이 가이드 <ArrowUpRight size={14} />
           </button>
           <div className="sidebar-version">
-            ROAD TO LEGEND <span>v0.1</span>
+            ROAD TO LEGEND <span>v0.2</span>
           </div>
         </div>
       </aside>
@@ -678,8 +714,8 @@ export default function App() {
             <div>
               <div className="eyebrow">
                 <span className="season-dot" />
-                {state.year} SEASON <span className="eyebrow-divider">/</span> {player.league}{' '}
-                LEAGUE
+                {state.year} SEASON <span className="eyebrow-divider">/</span>{' '}
+                {LEAGUE_LABELS[player.league]} · {stageLabel(player)}
               </div>
               <h1>
                 {page === 'home' ? '나의 야구 인생' : NAV.find((n) => n.id === page)?.label}
@@ -779,11 +815,8 @@ export default function App() {
                       <b>{player.team}</b>
                     </div>
                     <div>
-                      <span>CAREER</span>
-                      <b>
-                        {state.history.length + (preseason ? 1 : 0)}
-                        <small>년 차</small>
-                      </b>
+                      <span>CAREER STAGE</span>
+                      <b>{stageLabel(player)}</b>
                     </div>
                   </div>
                 </div>
@@ -792,8 +825,14 @@ export default function App() {
                   EST. 2026 <span>✦</span> YOUR OWN LEGACY
                 </span>
               </section>
+              <LifeOverview state={state} onOpen={() => navigate('market')} />
+              <CareerHealth state={state} />
               <div className="section-label">
-                <h2>{latest ? `${latest.year} 시즌 주요 기록` : '시즌 주요 기록'}</h2>
+                <h2>
+                  {latest
+                    ? `${latest.year} ${latest.stage === 'pro' ? '1군' : LEAGUE_LABELS[latest.league]} 주요 기록`
+                    : '시즌 주요 기록'}
+                </h2>
                 <button className="text-link" onClick={() => navigate('records')}>
                   상세 기록 보기 <ArrowRight size={14} />
                 </button>
@@ -833,8 +872,8 @@ export default function App() {
                             <h3>{planLabel(state)}</h3>
                             <p>
                               {SUPPORTS.find((x) => x.id === state.support)?.label} ·{' '}
-                              {SUPPORTS.find((x) => x.id === state.support)?.cost
-                                ? `${money(SUPPORTS.find((x) => x.id === state.support)!.cost)}원 투자`
+                              {trainingCost(state)
+                                ? `${money(trainingCost(state))}원 투자`
                                 : '추가 비용 없음'}
                             </p>
                           </div>
@@ -882,16 +921,28 @@ export default function App() {
                           </button>
                           <button onClick={() => navigate('market')}>
                             <Globe2 size={17} />
-                            계약 확인 <ChevronRight size={14} />
+                            진로 · 계약 <ChevronRight size={14} />
                           </button>
                         </div>
                         <p className="contract-note">
-                          다음 계약:{' '}
-                          <b>{state.offers.find((o) => o.id === state.selectedOffer)?.team}</b> ·{' '}
-                          {money(
-                            state.offers.find((o) => o.id === state.selectedOffer)?.salary ?? 0,
+                          {player.stage !== 'pro' ? (
+                            <>
+                              {needsCareerDecision(state)
+                                ? '다음 시즌을 준비하려면 진로를 선택해주세요.'
+                                : (latest?.draft?.reason ??
+                                  '학년과 소속 단계에 맞춰 다음 시즌으로 이어집니다.')}
+                            </>
+                          ) : (
+                            <>
+                              다음 계약:{' '}
+                              <b>{state.offers.find((o) => o.id === state.selectedOffer)?.team}</b>{' '}
+                              ·{' '}
+                              {money(
+                                state.offers.find((o) => o.id === state.selectedOffer)?.salary ?? 0,
+                              )}
+                              원
+                            </>
                           )}
-                          원
                         </p>
                       </>
                     )}
@@ -902,7 +953,7 @@ export default function App() {
                           ? '육성 · 경기 · 기록 · 시상식까지 한 번에 진행됩니다.'
                           : state.phase === 'retired'
                             ? '새 커리어로 또 다른 야구 인생을 시작할 수 있습니다.'
-                            : '선택한 계약으로 이동한 뒤, 다음 시즌 육성을 준비합니다.'}
+                            : '진로·계약에 맞춰 다음 학년 또는 다음 시즌을 준비합니다.'}
                       </p>
                     </div>
                   </Panel>
@@ -961,9 +1012,9 @@ export default function App() {
                     <Radar skills={player.skills} role={player.role} />
                     <div className="player-wallet">
                       <div>
-                        <span>시즌 연봉</span>
+                        <span>{player.stage === 'pro' ? '시즌 연봉' : '시즌 지원금'}</span>
                         <b>
-                          {money(player.salary)}
+                          {money(player.stage === 'pro' ? player.salary : 150)}
                           <small>원</small>
                         </b>
                       </div>
@@ -1001,6 +1052,7 @@ export default function App() {
                   </section>
                 </div>
               </div>
+              <RosterReport season={latest} />
             </>
           )}
 
@@ -1073,7 +1125,7 @@ export default function App() {
                     <button
                       key={s.id}
                       className={`support-card ${state.support === s.id ? 'selected' : ''}`}
-                      disabled={!preseason || busy || player.money < s.cost}
+                      disabled={!preseason || busy || player.money < trainingCost(state, s.id)}
                       onClick={() => setState({ ...state, support: s.id })}
                     >
                       <div>
@@ -1083,8 +1135,12 @@ export default function App() {
                         <b>{s.label}</b>
                       </div>
                       <p>{s.description}</p>
-                      <strong>{s.cost ? `${money(s.cost)}원` : '무료'}</strong>
-                      {player.money < s.cost && <small>예산 부족</small>}
+                      <strong>
+                        {trainingCost(state, s.id)
+                          ? `${money(trainingCost(state, s.id))}원`
+                          : '무료'}
+                      </strong>
+                      {player.money < trainingCost(state, s.id) && <small>예산 부족</small>}
                     </button>
                   ))}
                 </div>
@@ -1124,8 +1180,8 @@ export default function App() {
                   ))}
                 </div>
                 <p className="fine-print">
-                  능력치는 최대 99. 나이에 따라 성장폭이 달라지며 32세부터 신체 능력이 감소할 수
-                  있습니다.
+                  선수마다 성장 잠재력이 다릅니다. 학년·나이·육성 방향에 따라 성장폭이 달라지고,
+                  32세부터 노화가 반영됩니다.
                 </p>
               </Panel>
             </>
@@ -1149,6 +1205,15 @@ export default function App() {
                   </button>
                 </div>
                 <select
+                  aria-label="기록 구분"
+                  value={recordLevel}
+                  onChange={(e) => setRecordLevel(e.target.value as typeof recordLevel)}
+                >
+                  <option value="amateur">아마추어 기록</option>
+                  <option value="first">프로 1군 기록</option>
+                  <option value="second">프로 2군 기록</option>
+                </select>
+                <select
                   aria-label="기록 시즌 선택"
                   value={recordYear}
                   onChange={(e) => setRecordYear(e.target.value)}
@@ -1157,7 +1222,7 @@ export default function App() {
                   <option value="all">통산 전체</option>
                   {[...state.history].reverse().map((h) => (
                     <option key={h.year} value={h.year}>
-                      {h.year} · {h.league}
+                      {h.year} · {stageLabel(h)}
                     </option>
                   ))}
                 </select>
@@ -1173,7 +1238,7 @@ export default function App() {
                 action={
                   <span className="subtle">
                     {recordYear === 'all'
-                      ? `${state.history.length}시즌 합산`
+                      ? `${recordLevel === 'first' ? '1군' : recordLevel === 'second' ? '2군' : '아마추어'} 합산`
                       : (recordSeason?.team ?? '시즌 진행 전')}
                   </span>
                 }
@@ -1192,7 +1257,18 @@ export default function App() {
                 )}
               </Panel>
               <Panel title="연도별 기록" eyebrow="SEASON BY SEASON">
-                <HistoryTable history={state.history} role={player.role} />
+                <HistoryTable
+                  history={state.history
+                    .filter((h) =>
+                      recordLevel === 'amateur' ? h.stage !== 'pro' : h.stage === 'pro',
+                    )
+                    .map((h) =>
+                      recordLevel === 'second'
+                        ? { ...h, batting: h.minorBatting, pitching: h.minorPitching, war: 0 }
+                        : h,
+                    )}
+                  role={player.role}
+                />
               </Panel>
               <div className="info-bar">
                 <CircleHelp size={16} />
@@ -1305,7 +1381,7 @@ export default function App() {
                                 <div>
                                   <b>{a.title}</b>
                                   <p>
-                                    {h.year} · {h.league} · {a.detail}
+                                    {h.year} · {stageLabel(h)} · {a.detail}
                                   </p>
                                 </div>
                               </div>
@@ -1333,13 +1409,25 @@ export default function App() {
             </>
           )}
 
-          {page === 'market' && (
-            <Market
-              state={state}
-              onSelect={(id) => setState({ ...state, selectedOffer: id })}
-              onAdvance={advance}
-            />
-          )}
+          {page === 'market' &&
+            (player.stage === 'pro' ? (
+              <>
+                <LifeOverview
+                  state={state}
+                  onOpen={() =>
+                    document.querySelector('.roster-report')?.scrollIntoView({ behavior: 'smooth' })
+                  }
+                />
+                <Market
+                  state={state}
+                  onSelect={(id) => setState({ ...state, selectedOffer: id })}
+                  onAdvance={advance}
+                />
+                <RosterReport season={latest} />
+              </>
+            ) : (
+              <CareerPath key={state.year} state={state} onChange={setState} onAdvance={advance} />
+            ))}
 
           {page === 'career' && (
             <>
@@ -1347,7 +1435,7 @@ export default function App() {
                 <div>
                   <span>PRO SEASONS</span>
                   <strong>
-                    {state.history.length}
+                    {state.history.filter((h) => h.stage === 'pro').length}
                     <small>시즌</small>
                   </strong>
                 </div>
@@ -1365,7 +1453,10 @@ export default function App() {
                 <div>
                   <span>LEAGUES PLAYED</span>
                   <strong>
-                    {new Set(state.history.map((h) => h.league)).size}
+                    {
+                      new Set(state.history.filter((h) => h.stage === 'pro').map((h) => h.league))
+                        .size
+                    }
                     <small>/ 3</small>
                   </strong>
                 </div>
@@ -1382,10 +1473,16 @@ export default function App() {
                         <span className="timeline-dot" />
                         <div className="timeline-content">
                           <div>
-                            <span className="badge neutral">{h.league}</span>
+                            <span className="badge neutral">
+                              {LEAGUE_LABELS[h.league]} · {stageLabel(h)}
+                            </span>
                             {state.history[state.history.length - i - 2]?.league !== h.league && (
                               <span className="timeline-debut">
-                                {i === state.history.length - 1 ? '프로 데뷔' : '새로운 리그 도전'}
+                                {i === state.history.length - 1
+                                  ? '야구 인생 시작'
+                                  : h.stage === 'pro'
+                                    ? '프로 무대 진입'
+                                    : '새로운 무대 도전'}
                               </span>
                             )}
                           </div>
@@ -1394,11 +1491,19 @@ export default function App() {
                             <span>OVR {h.overall}</span>
                           </h3>
                           <p>
+                            {h.stage === 'pro' && '1군 · '}
                             {h.role === 'batter'
                               ? `${h.batting.g}경기 · 타율 ${decimal(battingRates(h.batting).avg)} · ${h.batting.hr}홈런 · ${h.batting.rbi}타점`
                               : `${h.pitching.w}승 ${h.pitching.l}패 · ERA ${pitchingRates(h.pitching).era.toFixed(2)} · ${h.pitching.so}K`}{' '}
                             · WAR {h.war.toFixed(1)}
                           </p>
+                          {h.stage === 'pro' && (
+                            <small>
+                              {h.role === 'batter'
+                                ? `2군 · ${h.minorBatting.g}경기 · 타율 ${decimal(battingRates(h.minorBatting).avg)} · ${h.minorBatting.hr}홈런`
+                                : `2군 · ${h.minorPitching.g}등판 · ${innings(h.minorPitching.outs)}이닝 · ERA ${pitchingRates(h.minorPitching).era.toFixed(2)}`}
+                            </small>
+                          )}
                           {h.awards.some((a) => a.mine) && (
                             <div className="timeline-awards">
                               <Trophy size={13} />
@@ -1409,6 +1514,16 @@ export default function App() {
                             </div>
                           )}
                           <small>{h.notes[1]}</small>
+                          {h.draft && (
+                            <div className="timeline-draft">
+                              <GraduationCap size={14} />
+                              <span>
+                                {h.draft.outcome === 'selected'
+                                  ? `${h.draft.team} ${h.draft.round}라운드 지명 · 계약금 ${money(h.draft.bonus)}원`
+                                  : h.draft.reason}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -1527,12 +1642,12 @@ export default function App() {
                     [
                       '03',
                       '기록을 읽고, 다음 무대로',
-                      '기록실과 시상식을 확인한 뒤 계약을 선택하세요. 기본 선택은 소속팀 재계약입니다.',
+                      '고3에는 드래프트와 대학 진학, 대학 2학년에는 얼리 드래프트와 잔류를 선택합니다. 프로에 들어가면 2군부터 감독의 평가를 받습니다.',
                     ],
                     [
                       '04',
                       '나만의 전설을 남기세요',
-                      'KBO 5시즌·OVR 68이면 NPB, 7시즌·OVR 78이면 MLB 포스팅에 도전할 수 있습니다. 40세 시즌 후 은퇴합니다.',
+                      '고교·대학·2군 기록과 1군 기록은 따로 보관합니다. 해외 진출에는 1군 등록 경력이 필요하며, 40세 시즌 후 은퇴합니다.',
                     ],
                   ].map(([num, title, text]) => (
                     <div key={num}>
@@ -1987,7 +2102,7 @@ function Market({
               <p>{d.desc}</p>
               <div className="eligibility">
                 <span>
-                  KBO 경력{' '}
+                  KBO 1군 등록 경력{' '}
                   <b>
                     {Math.min(e.service, d.years)} / {d.years}시즌
                   </b>
@@ -2009,8 +2124,9 @@ function Market({
           ))}
         </div>
         <p className="fine-print">
-          게임 내 간소화된 진출 규칙입니다. KBO 경력은 완료한 시즌 기준입니다. NPB에서는 3시즌·OVR
-          78 이상이면 MLB 제안, 해외 리그에서는 국내 복귀 제안도 받을 수 있습니다.
+          게임 내 간소화된 진출 규칙입니다. KBO 경력은 1군 등록일(145일당 1년, 시즌당 최대 1년)로
+          누적됩니다. 고교·대학·2군 기간은 제외됩니다. NPB에서도 1군 등록 100일 이상인 3시즌이
+          필요합니다.
         </p>
       </Panel>
     </>

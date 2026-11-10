@@ -20,7 +20,13 @@ import {
 } from './game';
 import type { Role, Skills, TalentCard, TalentDraft } from './game';
 
-export type NewPlayer = { name: string; role: Role; position: string; team: string };
+export type NewPlayer = {
+  name: string;
+  role: Role;
+  position: string;
+  team: string;
+  school: string;
+};
 const POSITIONS: Record<Role, [string, string][]> = {
   batter: [
     ['CF', '중견수'],
@@ -56,6 +62,7 @@ export default function CareerCreation({
     role: 'batter',
     position: 'CF',
     team: TEAMS.KBO[0],
+    school: TEAMS.HS[0],
   });
   const [step, setStep] = useState<'basics' | 'cards'>('basics');
   const [draft, setDraft] = useState<TalentDraft | null>(null);
@@ -100,7 +107,7 @@ export default function CareerCreation({
         <>
           <span className="eyebrow">A NEW BEGINNING</span>
           <h2 id="modal-title">어떤 이름으로 기억될까요?</h2>
-          <p>기본 설정을 마치면, 당신의 가능성을 담은 카드 3장이 기다립니다.</p>
+          <p>16세, 고교 1학년. 학교 야구부에서 시작해 나만의 진로를 만들어갑니다.</p>
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -150,7 +157,19 @@ export default function CareerCreation({
               </label>
             </div>
             <label>
-              선호 팀 · 데뷔 구단
+              출발할 고등학교
+              <select
+                aria-label="출발 고등학교"
+                value={player.school}
+                onChange={(e) => setPlayer({ ...player, school: e.target.value })}
+              >
+                {TEAMS.HS.map((t) => (
+                  <option key={t}>{t}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              선호 프로 구단 · 지명 구단과는 다를 수 있습니다
               <select
                 aria-label="선호 팀"
                 value={player.team}
@@ -178,7 +197,7 @@ export default function CareerCreation({
             <span className="eyebrow">THREE CARDS. ONE BEGINNING.</span>
             <h2 id="modal-title">당신의 첫 번째 가능성을 펼쳐보세요.</h2>
             <p>
-              <b>{player.name.trim()}</b> · {player.team} ·{' '}
+              <b>{player.name.trim()}</b> · {player.school} 고교 1학년 ·{' '}
               {POSITIONS[player.role].find(([id]) => id === player.position)?.[1]}
               <br />
               카드를 한 장씩 뒤집고, 함께 시작할 재능을 골라주세요.
