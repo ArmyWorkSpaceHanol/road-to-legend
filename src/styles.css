@@ -5266,3 +5266,712 @@ th button.sorted {
     margin-right: 18px;
   }
 }
+
+/* Season goals, decisions and the guided end-of-season review. */
+.goal-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.goal-card {
+  text-align: left;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fafbf7;
+}
+.goal-card.selected {
+  border-color: #668863;
+  background: #edf3e6;
+  box-shadow: inset 0 0 0 1px #668863;
+}
+.goal-card:not(:disabled):hover,
+.event-option:not(:disabled):hover {
+  border-color: #668863;
+  background: #f0f5e9;
+}
+.goal-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+}
+.goal-card-title svg:last-child {
+  margin-left: auto;
+}
+.goal-card strong {
+  display: block;
+  margin: 15px 0 8px;
+  font-family: var(--font-number);
+  font-size: 34px;
+}
+.goal-card strong small {
+  font-family: 'Noto Sans KR Variable', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+}
+.goal-card p,
+.auto-events small {
+  color: #707b69;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.auto-events {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+  cursor: pointer;
+}
+.auto-events input {
+  accent-color: var(--green);
+  width: 18px;
+  height: 18px;
+}
+.review-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 8px;
+  gap: 8px;
+  background: #e9eee2;
+  border-radius: 10px;
+  margin-bottom: 24px;
+}
+.review-steps button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 50px;
+  padding: 10px;
+  border-radius: 6px;
+  background: transparent;
+  color: #69775e;
+}
+.review-steps button span {
+  width: 25px;
+  height: 25px;
+  border: 1px solid #b7c5ac;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-family: var(--font-number);
+  font-size: 16px;
+}
+.review-steps button[aria-current='step'] {
+  color: var(--green);
+  background: white;
+  box-shadow: 0 2px 5px #173b2d0a;
+}
+.review-steps button[aria-current='step'] span {
+  background: var(--green);
+  color: white;
+  border-color: var(--green);
+}
+.review-hero {
+  padding: 34px;
+  color: #f6f6ed;
+  background: var(--deep);
+  border-radius: 10px;
+  margin-bottom: 24px;
+}
+.review-hero .eyebrow {
+  color: #c9d6b7;
+}
+.review-hero h2 {
+  font-size: clamp(22px, 3vw, 32px);
+  line-height: 1.5;
+  margin: 12px 0;
+}
+.review-hero p {
+  color: #cbd8bf;
+  line-height: 1.8;
+}
+.review-highlights {
+  display: flex;
+  gap: 45px;
+  margin-top: 25px;
+}
+.review-highlights span {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #cbd8bf;
+}
+.review-highlights b {
+  font: 600 42px var(--font-number);
+  color: #fff;
+}
+.review-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+.review-grid .panel {
+  min-width: 0;
+}
+.review-grid h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.review-grid p,
+.coaching-panel > p {
+  line-height: 1.9;
+}
+.goal-result strong {
+  display: block;
+  font: 600 38px var(--font-number);
+  margin: 18px 0 12px;
+}
+.goal-result small {
+  font:
+    500 12px 'Noto Sans KR Variable',
+    sans-serif;
+  color: #77836b;
+}
+.goal-result progress {
+  display: block;
+  width: 100%;
+  height: 9px;
+  accent-color: #668863;
+  border: 0;
+  border-radius: 5px;
+  overflow: hidden;
+}
+.goal-result progress::-webkit-progress-bar {
+  background: #edf0e7;
+}
+.goal-result progress::-webkit-progress-value {
+  background: #668863;
+}
+.story-choice {
+  color: #517347;
+  font-weight: 700;
+  margin: 14px 0 8px;
+}
+.coaching-panel .button {
+  margin-top: 20px;
+}
+.review-growth {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+}
+.review-growth > div {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px 8px;
+  border-radius: 8px;
+  background: #f4f6ef;
+}
+.review-growth b {
+  font: 600 30px var(--font-number);
+}
+.review-growth small {
+  color: #527e47;
+  font-weight: 700;
+}
+.review-growth .negative {
+  color: #ad5a48;
+}
+.review-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 22px 0;
+  border-top: 1px solid var(--line);
+  margin-top: 28px;
+}
+.review-pagination > span {
+  text-align: center;
+  font-family: var(--font-number);
+  font-size: 20px;
+}
+.review-pagination small {
+  display: block;
+  font:
+    500 11px 'Noto Sans KR Variable',
+    sans-serif;
+  color: #78826f;
+  margin-top: 4px;
+}
+.review-callout,
+.coaching-tip {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 22px;
+  border: 1px solid #d8e2cb;
+  background: #edf3e6;
+  border-radius: 8px;
+  margin-bottom: 24px;
+  text-align: left;
+  width: 100%;
+}
+.review-callout span {
+  flex: 1;
+}
+.review-callout small {
+  display: block;
+  color: #77866b;
+  margin-top: 6px;
+}
+.coaching-tip > div {
+  flex: 1;
+  min-width: 0;
+}
+.coaching-tip p {
+  line-height: 1.8;
+  margin-top: 6px;
+  color: #6d7b60;
+}
+.season-event .event-intro {
+  line-height: 1.9;
+  color: #6d7864;
+  margin: 16px 0;
+}
+.checkpoint-stats {
+  background: #eef3e7;
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.event-options {
+  display: grid;
+  gap: 12px;
+  margin: 22px 0;
+}
+.event-option {
+  border: 1px solid #dce4d2;
+  border-radius: 8px;
+  background: #fafbf8;
+  padding: 20px;
+  text-align: left;
+}
+.event-option > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 15px;
+}
+.event-option p {
+  line-height: 1.9;
+  margin-top: 8px;
+  color: #76816a;
+}
+.pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 0 2px;
+}
+.pagination-count {
+  font-size: 12px;
+  color: #78836e;
+}
+.pagination > div {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+.pagination button {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 6px;
+  background: #f4f6ee;
+  border-radius: 5px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+}
+.pagination button[aria-current='page'] {
+  color: white;
+  background: var(--green);
+}
+.pagination-gap {
+  padding: 0 5px;
+}
+.empty-table {
+  padding: 32px;
+  text-align: center;
+  color: #758168;
+}
+h1:focus {
+  outline: none;
+}
+@media (max-width: 700px) {
+  .goal-grid {
+    grid-template-columns: 1fr;
+  }
+  .goal-card {
+    padding: 16px;
+  }
+  .goal-card strong {
+    font-size: 28px;
+    margin: 8px 0 4px;
+  }
+  .review-steps {
+    gap: 4px;
+    padding: 6px;
+  }
+  .review-steps button {
+    gap: 6px;
+    flex-direction: column;
+    padding: 9px 2px;
+    font-size: 10px;
+  }
+  .review-steps button span {
+    width: 22px;
+    height: 22px;
+  }
+  .review-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .review-hero {
+    padding: 24px;
+  }
+  .review-highlights {
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .review-growth {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .review-pagination {
+    gap: 8px;
+  }
+  .review-pagination .button {
+    font-size: 11px;
+    padding: 12px;
+    min-height: 44px;
+  }
+  .pagination {
+    flex-wrap: wrap;
+  }
+  .pagination button {
+    min-width: 40px;
+    min-height: 44px;
+  }
+  .auto-events small {
+    flex-basis: 100%;
+    margin-left: 26px;
+  }
+  .coaching-tip {
+    flex-wrap: wrap;
+    padding: 18px;
+  }
+  .coaching-tip .button {
+    width: 100%;
+  }
+  .goal-card,
+  .event-option {
+    min-height: 44px;
+  }
+  .event-option {
+    padding: 16px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+.season-goals .goal-grid {
+  margin: 0 23px;
+}
+.season-goals .auto-events {
+  margin: 20px 23px;
+}
+.review-grid .panel,
+.coaching-panel,
+.review-development {
+  padding: 23px;
+}
+.review-grid .panel-heading,
+.coaching-panel .panel-heading,
+.review-development .panel-heading {
+  padding: 0 0 20px;
+}
+.review-development .review-growth {
+  margin-bottom: 2px;
+}
+.review-grid .fine-print,
+.coaching-panel .fine-print {
+  padding: 0;
+  margin-top: 16px;
+}
+.season-event h2 {
+  font-size: 23px;
+  line-height: 1.55;
+  margin: 14px 0 10px;
+  padding-right: 12px;
+}
+.pagination {
+  padding: 18px 23px;
+}
+.timeline-story {
+  margin-top: 12px;
+  padding: 12px;
+  background: #f1f5e9;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.timeline-story span {
+  display: block;
+  color: #718164;
+}
+@media (max-width: 700px) {
+  .season-goals .goal-grid {
+    margin: 0 18px;
+  }
+  .season-goals .auto-events {
+    margin: 18px;
+  }
+  .review-grid .panel,
+  .coaching-panel,
+  .review-development {
+    padding: 18px;
+  }
+  .pagination {
+    padding: 18px;
+  }
+}
+
+@media (max-width: 700px) {
+  .pagination > div > span {
+    display: none;
+  }
+  .pagination > div > span:has(button[aria-current='page']) {
+    display: inline-flex;
+  }
+}
+
+.mobile-season-action {
+  display: none;
+}
+@media (max-width: 700px) {
+  .has-season-dock {
+    padding-bottom: calc(84px + env(safe-area-inset-bottom));
+  }
+  .mobile-season-action {
+    display: block;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 25;
+    background: #fffefaf5;
+    padding: 12px 18px calc(12px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--line);
+    box-shadow: 0 -5px 18px #173b2d08;
+  }
+  .mobile-season-action .season-button {
+    width: 100%;
+    min-height: 48px;
+  }
+  .has-season-dock .season-action .season-button,
+  .has-season-dock .training-footer .season-button {
+    display: none;
+  }
+}
+@media (max-width: 700px) {
+  .has-season-dock .toast {
+    bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+}
+/* Selection forecasts and contract conversations. */
+.opportunity-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin: 0 23px 20px;
+}
+.opportunity-card {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 22px;
+  background: #fafbf6;
+}
+.opportunity-card h3 {
+  font-size: 15px;
+}
+.opportunity-card > strong {
+  display: block;
+  font: 600 38px var(--font-number);
+  margin: 16px 0;
+}
+.opportunity-card strong small {
+  font:
+    500 12px 'Noto Sans KR Variable',
+    sans-serif;
+}
+.opportunity-card p,
+.negotiation-body > p {
+  line-height: 1.9;
+  color: #6a795f;
+}
+.opportunity-card .button {
+  margin-top: 16px;
+}
+.eligibility-reason {
+  margin-top: 16px;
+  font-size: 12px;
+}
+.selection-result {
+  padding: 16px;
+  background: #f0ede5;
+  border-radius: 6px;
+  margin-top: 18px;
+  line-height: 1.8;
+}
+.selection-result.success {
+  background: #e6efd9;
+}
+.service-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 23px;
+  padding: 16px;
+  background: #edf2e3;
+  border-radius: 6px;
+  line-height: 1.8;
+}
+.negotiation-body {
+  padding: 0 23px 23px;
+}
+.salary-comparison {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.salary-comparison > div {
+  background: #f1f5e8;
+  padding: 18px;
+  border-radius: 6px;
+}
+.salary-comparison span {
+  display: block;
+  color: #6c7d5b;
+  font-size: 12px;
+}
+.salary-comparison strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 20px;
+}
+.salary-request {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 22px;
+  max-width: 340px;
+  font-weight: 650;
+}
+.salary-request input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid #bdcbb0;
+  border-radius: 5px;
+  background: #fff;
+}
+.raise-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+.raise-options button {
+  background: #edf3e2;
+  padding: 10px;
+  border: 1px solid #d6e0c9;
+  border-radius: 5px;
+  min-height: 40px;
+}
+.negotiation-odds {
+  border-left: 3px solid #8ba16d;
+  padding: 12px 18px;
+  margin: 20px 0;
+  background: #f7f8f1;
+}
+.negotiation-odds b {
+  font: 600 34px var(--font-number);
+}
+.negotiation-odds small {
+  font:
+    500 12px 'Noto Sans KR Variable',
+    sans-serif;
+}
+.negotiation-odds p {
+  margin-top: 8px;
+  line-height: 1.8;
+  color: #6d7b60;
+}
+.draft-projection {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 18px;
+  margin: 0 23px;
+  padding: 20px;
+  background: #edf3e3;
+  border-radius: 8px;
+}
+.draft-projection strong {
+  display: block;
+  font: 600 38px var(--font-number);
+  margin: 10px 0;
+}
+.draft-projection small {
+  font:
+    500 14px 'Noto Sans KR Variable',
+    sans-serif;
+}
+.draft-projection p {
+  color: #6b7e59;
+  font-size: 12px;
+  line-height: 1.8;
+}
+@media (max-width: 700px) {
+  .opportunity-grid,
+  .salary-comparison,
+  .draft-projection {
+    grid-template-columns: 1fr;
+  }
+  .opportunity-grid {
+    margin: 0 18px 18px;
+  }
+  .opportunity-card {
+    padding: 18px;
+  }
+  .negotiation-body {
+    padding: 0 18px 18px;
+  }
+  .service-status {
+    margin: 18px;
+  }
+  .draft-projection {
+    margin: 0 18px;
+  }
+  .raise-options button {
+    min-height: 44px;
+  }
+}

@@ -1,9 +1,9 @@
 import { useState } from 'react';
+import Pagination, { usePagination } from './Pagination';
 import {
   Activity,
   ArrowRight,
   CheckCircle2,
-  ChevronDown,
   GraduationCap,
   Shield,
   Sparkles,
@@ -113,7 +113,7 @@ export function LifeOverview({ state, onOpen }: { state: GameState; onOpen: () =
         <p className="life-attention">
           <CheckCircle2 size={14} />
           {latest.draft.outcome === 'selected'
-            ? `${latest.draft.team} ${latest.draft.round}라운드 지명! 프로 생활은 2군에서 시작합니다.`
+            ? `${latest.draft.team} ${latest.draft.round}라운드${latest.draft.pick ? ` ${((latest.draft.pick - 1) % 10) + 1}순위 · 전체 ${latest.draft.pick}순위` : ''} 지명! 프로 생활은 2군에서 시작합니다.`
             : latest.draft.reason}
         </p>
       )}
@@ -122,13 +122,13 @@ export function LifeOverview({ state, onOpen }: { state: GameState; onOpen: () =
 }
 
 export function CareerPath({
+  busy = false,
   state,
   onChange,
-  onAdvance,
 }: {
   state: GameState;
+  busy?: boolean;
   onChange: (next: GameState) => void;
-  onAdvance: () => void;
 }) {
   const p = state.player,
     h = state.history.at(-1),
@@ -137,6 +137,7 @@ export function CareerPath({
   const [college, setCollege] = useState(state.collegeTeam);
   const [error, setError] = useState('');
   const choose = (choice: 'draft' | 'college' | 'continue' | 'tryout') => {
+    if (busy) return;
     try {
       onChange(chooseCareerPath(state, choice, college));
       setError('');
@@ -181,6 +182,7 @@ export function CareerPath({
               <label className="college-select">
                 진학할 대학 · 미지명 시 진학할 대학
                 <select
+                  disabled={busy}
                   aria-label="진학 대학"
                   value={college}
                   onChange={(e) => setCollege(e.target.value)}
@@ -217,6 +219,7 @@ export function CareerPath({
                       : '미지명 → 독립리그에서 재도전'}
                 </span>
                 <button
+                  disabled={busy}
                   className="button primary"
                   onClick={() => choose(p.stage === 'independent' ? 'tryout' : 'draft')}
                 >
@@ -247,6 +250,7 @@ export function CareerPath({
                       : `${p.team} · 3학년 진급`}
                   </span>
                   <button
+                    disabled={busy}
                     className="button secondary"
                     onClick={() => choose(p.stage === 'highschool' ? 'college' : 'continue')}
                   >
@@ -276,7 +280,7 @@ export function CareerPath({
                 </span>
                 <h3>
                   {h.draft.outcome === 'selected'
-                    ? `${h.draft.team} · ${h.draft.round}라운드 지명`
+                    ? `${h.draft.team} · ${h.draft.round}라운드${h.draft.pick ? ` ${((h.draft.pick - 1) % 10) + 1}순위 (전체 ${h.draft.pick}순위)` : ''} 지명`
                     : h.draft.outcome === 'undrafted'
                       ? '이번 드래프트에서는 이름이 불리지 않았습니다.'
                       : h.draft.outcome === 'college'
@@ -315,12 +319,6 @@ export function CareerPath({
                 </p>
               </>
             )}
-            {state.phase === 'offseason' && (
-              <button className="button primary" onClick={onAdvance}>
-                다음 시즌 준비
-                <ArrowRight size={16} />
-              </button>
-            )}
           </div>
         )}
         {error && (
@@ -353,10 +351,30 @@ export function CareerPath({
             </div>
           ))}
         </div>
+        <div className="draft-projection">
+          <div>
+            <span>예상 지명 확률</span>
+            <strong>
+              {Math.round(report.probability * 100)}
+              <small>%</small>
+            </strong>
+          </div>
+          <div>
+            <span>{p.stage === 'independent' ? '드래프트 기준 평가' : '예상 지명 순위'}</span>
+            <strong>
+              {report.expectedRound}
+              <small>라운드 {report.expectedRoundPick}순위</small>
+            </strong>
+            <p>
+              전체 {report.expectedPick}순위 예상 · 범위 {report.lowPick}~{report.highPick}순위
+            </p>
+          </div>
+        </div>
         <p className="fine-print">
           예상 지명 가능성 {Math.round(report.probability * 100)}%. 마지막 시즌 기록과 현재 기량
-          기준이며 구단별 포지션 수요가 최종 결과에 반영됩니다. 아마추어 성적은 프로 통산이나 해외
-          진출 경력에 합산하지 않습니다.
+          기준이며 실제 추첨에 사용하는 확률입니다. 11라운드·10개 구단의 게임 내 예측으로, 실제
+          지명은 예상 범위에서 달라질 수 있습니다. 아마추어 성적은 프로 통산이나 해외 진출 경력에
+          합산하지 않습니다.
         </p>
       </section>
       <section className="path-map">
@@ -380,9 +398,9 @@ export function CareerPath({
 }
 
 export function RosterReport({ season }: { season?: Season }) {
-  const [expanded, setExpanded] = useState(false);
+  const pager = usePagination(season?.roster.length ?? 0, String(season?.year), 6);
   if (!season || season.stage !== 'pro') return null;
-  const rows = expanded ? season.roster : season.roster.slice(-6);
+  const rows = season.roster.slice(pager.start, pager.start + pager.size);
   return (
     <section className="panel roster-report">
       <div className="panel-heading">
@@ -451,10 +469,12 @@ export function RosterReport({ season }: { season?: Season }) {
               </article>
             ))}
           </div>
-          <button className="roster-expand" onClick={() => setExpanded(!expanded)}>
-            {expanded ? '최근 평가만 보기' : '24개 평가 구간 전체 보기'}
-            <ChevronDown size={14} />
-          </button>
+          <Pagination
+            {...pager}
+            total={season.roster.length}
+            onChange={pager.setPage}
+            label="감독 평가"
+          />
         </>
       ) : (
         <p className="fine-print">

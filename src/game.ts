@@ -1,4 +1,11 @@
 import { z } from 'zod';
+import {
+  clubSalaryProposal,
+  kboEligibility,
+  salaryNegotiationReport,
+  selectionReport,
+  postingReport,
+} from './careerRules.ts';
 
 export type League = 'HS' | 'COLLEGE' | 'IND' | 'KBO' | 'NPB' | 'MLB';
 export type CareerStage = 'highschool' | 'college' | 'independent' | 'pro';
@@ -356,6 +363,7 @@ const draftSchema = z.object({
   probability: stat.max(1),
   team: z.string().nullable(),
   round: stat.int(),
+  pick: stat.int().min(1).max(110).optional(),
   bonus: stat,
   reason: z.string(),
 });
@@ -376,14 +384,53 @@ const rosterSchema = z.object({
   reason: z.string(),
 });
 export type RosterPeriod = z.infer<typeof rosterSchema>;
+const goalIdSchema = z.enum(['growth', 'performance', 'opportunity']);
+const eventKindSchema = z.enum(['technique', 'chance', 'rest']);
+const eventChoiceSchema = z.enum(['bold', 'steady']);
+const goalResultSchema = z.object({
+  id: goalIdSchema,
+  label: z.string(),
+  target: stat,
+  current: stat,
+  unit: z.string(),
+  achieved: z.boolean(),
+});
+const storySchema = z.object({
+  kind: eventKindSchema,
+  choice: eventChoiceSchema,
+  title: z.string(),
+  label: z.string(),
+  effect: z.string(),
+});
+export type GoalId = z.infer<typeof goalIdSchema>;
+export type EventKind = z.infer<typeof eventKindSchema>;
+export type EventChoice = z.infer<typeof eventChoiceSchema>;
+const selectionSchema = z.object({
+  kind: z.enum(['national', 'sangmu']),
+  label: z.string(),
+  probability: stat.max(1),
+  selected: z.boolean(),
+  reason: z.string(),
+});
+const negotiationSchema = z.object({
+  originalOffer: stat,
+  requested: stat,
+  probability: stat.max(1),
+  accepted: z.boolean(),
+});
 const seasonSchema = legacySeasonSchema.extend({
   stage: stageSchema,
   grade: stat.int().max(4),
   minorBatting: batSchema,
   minorPitching: pitchSchema,
   registrationDays: stat.int().max(168),
+  militaryMonths: stat.int().max(12).optional(),
   roster: z.array(rosterSchema).max(24),
   draft: draftSchema.nullable(),
+  goal: goalResultSchema.optional(),
+  story: storySchema.optional(),
+  selections: z.array(selectionSchema).max(2).optional(),
+  negotiation: negotiationSchema.optional(),
 });
 export type Season = z.infer<typeof seasonSchema>;
 const offerSchema = z.object({
@@ -392,6 +439,7 @@ const offerSchema = z.object({
   team: z.string(),
   salary: stat,
   route: z.string(),
+  usesFA: z.boolean().optional(),
 });
 export type Offer = z.infer<typeof offerSchema>;
 const legacyStateSchema = z.object({
@@ -431,10 +479,22 @@ const stateSchema = legacyStateSchema.extend({
     fatigue: stat.max(100),
     injuryDays: stat.int().max(240),
     entry: z.enum(['highschool', 'early', 'college', 'tryout', 'legacy']).nullable(),
+    faSignedYear: stat.int().optional(),
+    military: z
+      .object({
+        status: z.enum(['unserved', 'scheduled', 'serving', 'completed', 'exempt']),
+        months: stat.int().max(18),
+      })
+      .optional(),
   }),
   history: z.array(seasonSchema).max(30),
   careerChoice: z.enum(['draft', 'college', 'continue', 'tryout']).nullable(),
   collegeTeam: z.string(),
+  negotiation: negotiationSchema.optional(),
+  postingDecision: z.object({ approved: z.boolean(), probability: stat.max(1) }).optional(),
+  seasonGoal: goalIdSchema.optional(),
+  autoEvents: z.boolean().optional(),
+  seasonEvent: z.object({ kind: eventKindSchema, choice: eventChoiceSchema.nullable() }).optional(),
 });
 export type GameState = z.infer<typeof stateSchema>;
 export const SKILL_LABELS = {
@@ -970,7 +1030,13 @@ function makeAwards(s: GameState, leaders: Leader[]): z.infer<typeof awardSchema
   }
   return awards;
 }
-export function stageLabel(p: { stage: CareerStage; grade: number; squad?: Squad }) {
+export function stageLabel(p: {
+  stage: CareerStage;
+  grade: number;
+  squad?: Squad;
+  military?: { status: string };
+}) {
+  if (p.military?.status === 'serving') return '상무 복무';
   return p.stage === 'highschool'
     ? `고교 ${p.grade}학년`
     : p.stage === 'college'
@@ -1125,7 +1191,145 @@ function recentPerformance(b: Batting, p: Pitching, role: Role, minor: boolean) 
     ? clamp(85 - pitchingRates(p).era * 10 + pitchingRates(p).k9 * 0.5 - (minor ? 8 : 0), 5, 98)
     : 40;
 }
-function simulateRoster(s: GameState, skills: Skills, rng: Random) {
+export function seasonGoals(s: GameState) {
+  const pro = s.player.stage === 'pro',
+    batter = s.player.role === 'batter';
+  const games = pro ? 120 : SEASON_GAMES[s.player.league];
+  return [
+    {
+      id: 'growth' as const,
+      label: '한 단계 성장',
+      target: 2,
+      unit: 'OVR 상승',
+      description: '시작 능력치보다 종합 능력치 2 올리기',
+    },
+    {
+      id: 'performance' as const,
+      label: batter ? '안타로 증명하기' : '마운드 경험 쌓기',
+      target: Math.round(games * (batter ? 0.7 : s.player.position === 'CP' ? 0.35 : 0.85)),
+      unit: batter ? '안타' : '이닝',
+      description: pro
+        ? '1·2군 기록을 합산해 도전합니다.'
+        : '이번 시즌의 실제 출장 기록으로 평가합니다.',
+    },
+    {
+      id: 'opportunity' as const,
+      label: pro ? '1군에 내 자리 만들기' : '꾸준한 출전',
+      target: pro
+        ? 30
+        : Math.round(games * (batter ? 0.65 : s.player.position === 'CP' ? 0.3 : 0.15)),
+      unit: pro ? '1군 등록일' : batter ? '출장 경기' : '등판',
+      description: pro
+        ? '이번 시즌 1군에 30일 이상 등록하기'
+        : '부상 관리와 훈련을 이어가며 출전하기',
+    },
+  ];
+}
+
+export function seasonEventKind(s: GameState): EventKind {
+  if (s.player.injuryDays >= 14 || s.player.fatigue >= 65) return 'rest';
+  return (['technique', 'chance', 'rest'] as const)[((s.seed % 3) + s.year) % 3];
+}
+
+export function seasonEventDetails(s: GameState) {
+  const kind = s.seasonEvent?.kind ?? seasonEventKind(s);
+  const pro = s.player.stage === 'pro',
+    batter = s.player.role === 'batter';
+  const technique = batter ? '타격폼' : '투구폼';
+  const control = batter ? '컨택' : '제구';
+  const power = batter ? '파워' : '구위';
+  const details = {
+    technique: {
+      title: `${technique}를 바꿀 기회`,
+      description: `전반기를 돌아본 코치가 ${technique} 교정을 제안했습니다. 후반기에 어떤 방향을 시도할까요?`,
+      options: [
+        {
+          id: 'bold' as const,
+          label: '과감한 폼 교정',
+          effect: `${power} +4 · ${control} −2. 후반기부터 적용됩니다.`,
+        },
+        {
+          id: 'steady' as const,
+          label: '기본기부터 다듬기',
+          effect: `${control} +2 · 멘탈 +1. 후반기부터 적용됩니다.`,
+        },
+      ],
+    },
+    chance: {
+      title: pro ? '감독이 건넨 새로운 기회' : '중요한 경기를 앞둔 제안',
+      description: pro
+        ? '후반기 출전 경쟁을 앞두고 감독이 적극적인 준비를 주문했습니다. 기회를 위해 더 밀어붙일까요?'
+        : '코치가 후반기 경기에서 더 큰 역할을 맡아달라고 합니다. 나에게 맞는 준비 방식을 고르세요.',
+      options: [
+        {
+          id: 'bold' as const,
+          label: '추가 훈련으로 승부',
+          effect: `멘탈 +2${pro ? ' · 감독 신뢰 +6 · 피로 +12' : ' · 체력/스피드 −1'}. 후반기부터 적용됩니다.`,
+        },
+        {
+          id: 'steady' as const,
+          label: '평소 리듬 유지',
+          effect: `멘탈 +1${pro ? ' · 피로 −10' : ' · 체력/스피드 +1'}. 후반기부터 적용됩니다.`,
+        },
+      ],
+    },
+    rest: {
+      title: '시즌 중간, 몸을 돌볼 시간',
+      description:
+        '트레이너가 회복 시간을 제안했습니다. 당장의 경기 감각과 오래 뛸 몸 사이에서 방향을 정하세요.',
+      options: [
+        {
+          id: 'bold' as const,
+          label: '경기 감각 이어가기',
+          effect: `${pro ? '감독 신뢰 +4 · 피로 +12' : '멘탈 +2 · 체력/스피드 −1'}. 추가 휴식 없이 후반기를 이어갑니다.`,
+        },
+        {
+          id: 'steady' as const,
+          label: '회복을 우선하기',
+          effect: pro
+            ? '후반기 첫 평가 구간 휴식 · 피로 −20 · 남은 부상 기간 −14일.'
+            : '후반기 출장 기회 2경기 감소 · 체력/스피드 +2.',
+        },
+      ],
+    },
+  };
+  return { kind, ...details[kind] };
+}
+
+export function beginSeason(s: GameState): GameState {
+  if (s.phase !== 'preseason') throw new Error('시즌을 준비한 뒤 진행해주세요.');
+  if (s.player.money < trainingCost(s)) throw new Error('훈련 예산이 부족합니다.');
+  if (s.seasonEvent) return s;
+  return { ...s, seasonEvent: { kind: seasonEventKind(s), choice: null } };
+}
+
+function applySeasonChoice(s: GameState, skills: Skills) {
+  const event = s.seasonEvent;
+  if (!event?.choice) return { trust: 0, fatigue: 0, recovery: 0, rest: false };
+  const bold = event.choice === 'bold',
+    pro = s.player.stage === 'pro';
+  const change = (key: keyof Skills, amount: number) => {
+    skills[key] = clamp(skills[key] + amount, 20, Math.max(skills[key], s.player.potential));
+  };
+  if (event.kind === 'technique') {
+    change(bold ? 'power' : 'contact', bold ? 4 : 2);
+    change(bold ? 'contact' : 'mental', bold ? -2 : 1);
+  } else if (event.kind === 'chance') {
+    change('mental', bold ? 2 : 1);
+    if (!pro) change('speed', bold ? -1 : 1);
+  } else if (!pro) {
+    change(bold ? 'mental' : 'speed', 2);
+    if (bold) change('speed', -1);
+  }
+  return {
+    trust: event.kind === 'chance' && bold ? 6 : event.kind === 'rest' && bold ? 4 : 0,
+    fatigue: event.kind === 'technique' ? 0 : bold ? 12 : event.kind === 'rest' ? -20 : -10,
+    recovery: event.kind === 'rest' && !bold ? 14 : 0,
+    rest: event.kind === 'rest' && !bold,
+  };
+}
+
+function simulateRoster(s: GameState, skills: Skills, rng: Random, periods = 24) {
   const batting = emptyBat(),
     pitching = emptyPitch(),
     minorBatting = emptyBat(),
@@ -1139,7 +1343,18 @@ function simulateRoster(s: GameState, skills: Skills, rng: Random) {
     poorPeriods = 0,
     injuryGames = 0,
     registrationDays = 0;
-  for (let period = 1; period <= 24; period++) {
+  for (let period = 1; period <= periods; period++) {
+    let resting = false;
+    if (period === 13) {
+      const effect = applySeasonChoice(s, skills);
+      trust = clamp(trust + effect.trust, 10, 95);
+      fatigue = clamp(fatigue + effect.fatigue, 0, 100);
+      injuryDays = Math.max(0, injuryDays - effect.recovery);
+      resting = effect.rest;
+    }
+    const militaryPeriod =
+      s.player.military?.status === 'serving' && period <= s.player.military.months * 2;
+    if (militaryPeriod) squad = 'second';
     const before = squad,
       games = before === 'first' ? SEASON_GAMES[s.player.league] : 120;
     const scheduled = Math.floor((games * period) / 24) - Math.floor((games * (period - 1)) / 24);
@@ -1152,11 +1367,10 @@ function simulateRoster(s: GameState, skills: Skills, rng: Random) {
           (s.support === 'conditioning' ? 0.5 : 1)
     )
       injuryDays = rng.next() < 0.09 ? int(rng, 90, 180) : int(rng, 7, 35);
-    const healthAvailable = Math.max(
-      0,
-      scheduled - Math.ceil((Math.min(injuryDays, 7) * scheduled) / 7),
-    );
-    injuryGames += scheduled - healthAvailable;
+    const healthAvailable = resting
+      ? 0
+      : Math.max(0, scheduled - Math.ceil((Math.min(injuryDays, 7) * scheduled) / 7));
+    injuryGames += resting ? 0 : scheduled - healthAvailable;
     const startsShare =
       before === 'first'
         ? clamp(
@@ -1228,6 +1442,11 @@ function simulateRoster(s: GameState, skills: Skills, rng: Random) {
       poorPeriods,
       periods: period,
     });
+    if (militaryPeriod) {
+      report.decision = 'retained';
+      report.reason =
+        '상무 복무 중입니다. 2군 경기만 출전하며 이 기간은 KBO 1군 등록 경력에 포함되지 않습니다.';
+    }
     roster.push({
       period,
       squad: before,
@@ -1259,7 +1478,7 @@ function simulateRoster(s: GameState, skills: Skills, rng: Random) {
     injuryDays,
   };
 }
-export function scoutReport(s: GameState) {
+function scoutEvaluation(s: GameState) {
   const h = s.history.at(-1);
   const performance = h ? recentPerformance(h.batting, h.pitching, s.player.role, false) : 40;
   const scheduled = SEASON_GAMES[s.player.league],
@@ -1288,6 +1507,30 @@ export function scoutReport(s: GameState) {
     performance: Math.round(performance),
     readiness: Math.round(readiness),
     exposure: Math.round(exposure),
+  };
+}
+function draftPool(s: GameState, rng: Random) {
+  return TEAMS.KBO.map((team) => ({
+    team,
+    fit:
+      (100 - teamCompetition(team, s.player.position, s.year)) / 2 +
+      int(rng, 0, 5) +
+      (team === s.player.preferredTeam ? 2 : 0),
+  })).sort((a, b) => b.fit - a.fit);
+}
+export function scoutReport(s: GameState) {
+  const report = scoutEvaluation(s),
+    pool = draftPool(s, random(s.seed));
+  const probability = clamp(report.probability + (pool[0].fit - 20) * 0.008, 0.03, 0.97);
+  const expectedPick = Math.round(clamp(1 + (90 - report.score) * 2.5, 1, 110));
+  return {
+    ...report,
+    probability,
+    expectedPick,
+    expectedRound: Math.ceil(expectedPick / 10),
+    expectedRoundPick: ((expectedPick - 1) % 10) + 1,
+    lowPick: Math.max(1, expectedPick - 10),
+    highPick: Math.min(110, expectedPick + 10),
   };
 }
 export function chooseCareerPath(
@@ -1330,27 +1573,22 @@ export function chooseCareerPath(
   } else {
     const rng = random(s.seed),
       report = scoutReport(s);
-    const ranked = TEAMS.KBO.map((team) => ({
-      team,
-      fit:
-        (100 - teamCompetition(team, s.player.position, s.year)) / 2 +
-        int(rng, 0, 5) +
-        (team === s.player.preferredTeam ? 2 : 0),
-    })).sort((a, b) => b.fit - a.fit);
-    const probability = clamp(report.probability + (ranked[0].fit - 20) * 0.008, 0.03, 0.97),
+    const ranked = draftPool(s, rng);
+    const probability = report.probability,
       selected = rng.next() < probability;
-    const round = selected
-      ? Math.round(clamp(11 - (report.score - 45) / 4 + int(rng, -1, 1), 1, 10))
-      : 0;
+    const pick = Math.round(clamp(report.expectedPick + int(rng, -10, 10), 1, 110));
+    const round = selected ? Math.ceil(pick / 10) : 0;
+    const team = ranked[(pick - 1) % 10].team;
     h.draft = {
       outcome: selected ? 'selected' : 'undrafted',
       score: report.score,
       probability,
-      team: selected ? ranked[0].team : null,
+      team: selected ? team : null,
       round,
-      bonus: selected ? (11 - round) * 1200 : 0,
+      ...(selected ? { pick } : {}),
+      bonus: selected ? (12 - round) * 1200 : 0,
       reason: selected
-        ? `기량 ${report.readiness}, 최근 경기력 ${report.performance}, 출장 노출 ${report.exposure}를 검토한 구단이 ${round}라운드에 지명했습니다. 선호 팀은 지명을 보장하지 않습니다.`
+        ? `기량 ${report.readiness}, 최근 경기력 ${report.performance}, 출장 노출 ${report.exposure}를 검토한 구단이 ${round}라운드 ${((pick - 1) % 10) + 1}순위(전체 ${pick}순위)에 지명했습니다. 선호 팀은 지명을 보장하지 않습니다.`
         : high
           ? `구단의 포지션 수요와 스카우트 평가에서 지명에 이르지 못했습니다. ${college}로 진학해 다시 도전합니다.`
           : early
@@ -1363,83 +1601,143 @@ export function chooseCareerPath(
   return s;
 }
 export function internationalEligibility(s: GameState) {
-  const service = s.history
-    .filter((h) => h.stage === 'pro' && h.league === 'KBO')
-    .reduce((n, h) => n + Math.min(1, h.registrationDays / 145), 0);
-  const rating = overall(s.player.skills);
-  return {
-    service: Math.floor(service * 100) / 100,
-    npb: s.player.stage === 'pro' && service >= 5 && rating >= 68,
-    mlb: s.player.stage === 'pro' && service >= 7 && rating >= 78,
-    rating,
-  };
+  const e = kboEligibility(s);
+  return { ...e, npb: e.posting || e.fa, mlb: e.posting || e.fa };
 }
 function offersFor(s: GameState): Offer[] {
   if (s.player.stage !== 'pro') return [];
-  const league = s.player.league,
-    rating = overall(s.player.skills),
-    h = s.history.at(-1)!;
-  const value = Math.max(0, h.war) * 2200 + (h.registrationDays / 168) * (rating - 40) ** 2 * 8;
-  const salary = Math.round(
-    Math.max(3000, value) * (league === 'MLB' ? 20 : league === 'NPB' ? 3 : 1),
-  );
+  const p = s.player,
+    league = p.league;
+  const salary = clubSalaryProposal(s);
   const offers: Offer[] = [
-    { id: 'renew', league, team: s.player.team, salary, route: '소속팀 재계약' },
+    { id: 'renew', league, team: p.team, salary, route: '구단의 첫 연봉 제안' },
   ];
-  const eligible = internationalEligibility(s);
-  const fa =
-    eligible.service >= (s.player.entry === 'college' ? 7 : 8) ||
-    (league !== 'KBO' && s.history.filter((h) => h.league === league).length >= 3);
-  if (fa)
+  if (['scheduled', 'serving'].includes(p.military?.status ?? 'unserved'))
+    return [{ ...offers[0], salary: p.salary, route: '복무 중 원소속 구단 계약 보류' }];
+  const e = kboEligibility(s);
+  if (e.fa) {
+    offers.push({
+      id: 'renew-fa',
+      league,
+      team: p.team,
+      salary: Math.round(salary * 1.15),
+      route: 'FA 권리 행사 · 소속팀 계약',
+      usesFA: true,
+    });
     offers.push({
       id: 'domestic',
       league,
-      team: TEAMS[league].filter((t) => t !== s.player.team)[s.year % (TEAMS[league].length - 1)],
-      salary: Math.round(salary * 1.12),
-      route: 'FA 이적 제안',
+      team: TEAMS.KBO.filter((t) => t !== p.team)[s.year % 9],
+      salary: Math.round(salary * 1.2),
+      route: 'FA 권리 행사 · 국내 이적',
+      usesFA: true,
     });
-  if (league === 'KBO' && eligible.npb)
+  }
+  if (league === 'KBO' && (e.fa || (e.posting && s.postingDecision?.approved))) {
     offers.push({
       id: 'npb',
       league: 'NPB',
       team: TEAMS.NPB[s.year % TEAMS.NPB.length],
       salary: Math.round(salary * 2.4),
-      route: '구단 동의 · NPB 진출',
+      route: e.fa ? 'FA 해외 진출' : '구단 승인 · NPB 포스팅',
+      ...(e.fa ? { usesFA: true } : {}),
     });
-  if (
-    (league === 'KBO' && eligible.mlb) ||
-    (league === 'NPB' &&
-      s.history.filter((h) => h.league === 'NPB' && h.registrationDays >= 100).length >= 3 &&
-      rating >= 78)
-  )
     offers.push({
       id: 'mlb',
       league: 'MLB',
       team: TEAMS.MLB[s.year % TEAMS.MLB.length],
-      salary: Math.round(salary * (league === 'KBO' ? 12 : 5)),
-      route: league === 'KBO' ? 'MLB 포스팅' : 'MLB 이적',
+      salary: Math.round(salary * 12),
+      route: e.fa ? 'FA 해외 진출' : '구단 승인 · MLB 포스팅',
+      ...(e.fa ? { usesFA: true } : {}),
     });
-  if (league !== 'KBO')
+  }
+  if (league !== 'KBO') {
+    if (
+      league === 'NPB' &&
+      s.history.filter((h) => h.league === 'NPB' && h.registrationDays >= 100).length >= 3
+    )
+      offers.push({
+        id: 'mlb',
+        league: 'MLB',
+        team: TEAMS.MLB[s.year % 30],
+        salary: Math.round(salary * 5),
+        route: 'MLB 이적 제안',
+      });
     offers.push({
       id: 'return',
       league: 'KBO',
       team: TEAMS.KBO[0],
-      salary: Math.round(Math.max(3000, value)),
+      salary: Math.max(3000, Math.round(salary / (league === 'MLB' ? 20 : 3))),
       route: '국내 복귀',
     });
+  }
   return offers;
 }
-export function playSeason(input: GameState): GameState {
-  if (input.phase !== 'preseason') throw new Error('다음 시즌을 준비한 후 진행해주세요.');
-  const cost = trainingCost(input);
-  if (input.player.money < cost)
-    throw new Error('훈련 예산이 부족합니다. 다른 지원 방식을 선택해주세요.');
+export function negotiateSalary(input: GameState, requested: number): GameState {
+  if (input.phase !== 'offseason' || input.player.stage !== 'pro' || input.negotiation)
+    throw new Error('연봉 재협상은 시즌 종료 후 한 번만 가능합니다.');
+  if (['scheduled', 'serving'].includes(input.player.military?.status ?? ''))
+    throw new Error('복무 중에는 연봉 재협상을 진행하지 않습니다.');
+  const report = salaryNegotiationReport(input, requested);
+  if (!Number.isSafeInteger(requested) || requested <= report.base || requested > report.base * 2)
+    throw new Error('구단 제안보다 높고 2배 이하인 금액을 입력해주세요.');
   const s = structuredClone(input),
     rng = random(s.seed),
+    accepted = rng.next() < report.probability;
+  s.negotiation = {
+    originalOffer: report.base,
+    requested,
+    probability: report.probability,
+    accepted,
+  };
+  s.history.at(-1)!.negotiation = s.negotiation;
+  if (accepted) s.offers.find((o) => o.id === 'renew')!.salary = requested;
+  s.seed = rng.seed();
+  return s;
+}
+export function requestPosting(input: GameState): GameState {
+  const e = kboEligibility(input);
+  if (input.phase !== 'offseason' || !e.posting || e.fa || input.postingDecision)
+    throw new Error('포스팅 허가 요청은 자격 충족 후 시즌당 한 번만 가능합니다.');
+  const s = structuredClone(input),
+    rng = random(s.seed);
+  const probability = postingReport(s).probability;
+  s.postingDecision = { approved: rng.next() < probability, probability };
+  const renewed = s.offers.find((o) => o.id === 'renew');
+  s.offers = offersFor(s);
+  if (renewed) s.offers.find((o) => o.id === 'renew')!.salary = renewed.salary;
+  s.seed = rng.seed();
+  return s;
+}
+export function applyForSelection(input: GameState, kind: 'national' | 'sangmu'): GameState {
+  if (!['national', 'sangmu'].includes(kind)) throw new Error('올바르지 않은 선발 종류입니다.');
+  const report = selectionReport(input, kind);
+  if (!report.eligible) throw new Error(report.reason);
+  const s = structuredClone(input),
+    rng = random(s.seed),
+    selected = rng.next() < report.probability;
+  const result = {
+    kind,
+    label: report.label,
+    probability: report.probability,
+    selected,
+    reason: selected
+      ? `${report.label} 선발을 확정했습니다.`
+      : `성적과 포지션 경쟁을 검토했으나 이번 선발에는 들지 못했습니다.`,
+  };
+  s.history.at(-1)!.selections = [...(s.history.at(-1)!.selections ?? []), result];
+  if (kind === 'sangmu' && selected) {
+    s.player.military = { status: 'scheduled', months: 18 };
+    s.offers = s.offers.filter((o) => o.id === 'renew');
+    s.selectedOffer = 'renew';
+  }
+  s.seed = rng.seed();
+  return s;
+}
+function simulateSeason(input: GameState, halfway = false) {
+  const s = input,
+    rng = random(s.seed),
     skills = grow(s, rng);
-  const growth = Object.fromEntries(
-    Object.entries(skills).map(([k, v]) => [k, v - s.player.skills[k as keyof Skills]]),
-  ) as Skills;
   const games = SEASON_GAMES[s.player.league],
     pro = s.player.stage === 'pro';
   const injuryGames =
@@ -1454,26 +1752,68 @@ export function playSeason(input: GameState): GameState {
       (s.player.stage === 'highschool' && s.player.grade === 1 ? int(rng, 5, 12) : int(rng, 0, 4)),
   );
   const sim = pro
-    ? simulateRoster(s, skills, rng)
-    : {
-        batting:
-          s.player.role === 'batter'
-            ? simulateBat(skills, s.player.league, played, rng)
-            : emptyBat(),
-        pitching:
-          s.player.role === 'pitcher'
-            ? simulatePitch(skills, s.player.league, played, s.player.position === 'CP', rng)
-            : emptyPitch(),
-        minorBatting: emptyBat(),
-        minorPitching: emptyPitch(),
-        roster: [],
-        registrationDays: 0,
-        injuryGames,
-        squad: s.player.squad,
-        trust: s.player.trust,
-        fatigue: 0,
-        injuryDays: 0,
-      };
+    ? simulateRoster(s, skills, rng, halfway ? 12 : 24)
+    : (() => {
+        const batting = emptyBat(),
+          pitching = emptyPitch();
+        const run = (count: number) => {
+          if (s.player.role === 'batter')
+            addStats(batting, simulateBat(skills, s.player.league, count, rng));
+          else
+            addStats(
+              pitching,
+              simulatePitch(skills, s.player.league, count, s.player.position === 'CP', rng),
+            );
+        };
+        if (s.seasonEvent) {
+          const first = Math.floor(played / 2);
+          run(first);
+          if (!halfway) {
+            const effect = applySeasonChoice(s, skills);
+            run(Math.max(0, played - first - (effect.rest ? 2 : 0)));
+          }
+        } else run(played);
+        return {
+          batting,
+          pitching,
+          minorBatting: emptyBat(),
+          minorPitching: emptyPitch(),
+          roster: [],
+          registrationDays: 0,
+          injuryGames,
+          squad: s.player.squad,
+          trust: s.player.trust,
+          fatigue: 0,
+          injuryDays: 0,
+        };
+      })();
+  return { rng, skills, sim };
+}
+
+export function seasonCheckpoint(s: GameState) {
+  if (s.phase !== 'preseason' || !s.seasonEvent) throw new Error('진행 중인 시즌이 없습니다.');
+  return simulateSeason(s, true).sim;
+}
+
+export function resolveSeasonEvent(s: GameState, choice: EventChoice): GameState {
+  if (s.phase !== 'preseason' || !s.seasonEvent || s.seasonEvent.choice !== null)
+    throw new Error('이미 결정했거나 선택할 사건이 없습니다.');
+  if (!['bold', 'steady'].includes(choice)) throw new Error('올바른 선택이 아닙니다.');
+  return playSeason({ ...s, seasonEvent: { ...s.seasonEvent, choice } });
+}
+
+export function playSeason(input: GameState): GameState {
+  if (input.phase !== 'preseason') throw new Error('다음 시즌을 준비한 후 진행해주세요.');
+  const cost = trainingCost(input);
+  if (input.player.money < cost)
+    throw new Error('훈련 예산이 부족합니다. 다른 지원 방식을 선택해주세요.');
+  if (input.seasonEvent?.choice === null) throw new Error('시즌 중 선택을 먼저 완료해주세요.');
+  const s = structuredClone(input);
+  const { rng, skills, sim } = simulateSeason(s);
+  const pro = s.player.stage === 'pro';
+  const growth = Object.fromEntries(
+    Object.entries(skills).map(([k, v]) => [k, v - s.player.skills[k as keyof Skills]]),
+  ) as Skills;
   const war = playerWar(sim.batting, sim.pitching, skills, s.player.role),
     standings = simulateStandings(s.player.league, s.player.team, war, rng);
   const place = standings.findIndex((t) => t.team === s.player.team) + 1;
@@ -1514,17 +1854,71 @@ export function playSeason(input: GameState): GameState {
     injuryGames: sim.injuryGames,
     notes,
     salary: s.player.salary,
+    ...(s.player.military?.status === 'serving'
+      ? { militaryMonths: Math.min(12, s.player.military.months) }
+      : {}),
     cost,
   };
   const leaders = makeLeaders(s, partial, rng),
     awards = makeAwards(s, leaders);
-  s.history.push({ ...partial, leaders, awards });
+  const goal = seasonGoals(s).find((g) => g.id === (s.seasonGoal ?? 'growth'))!;
+  const current =
+    goal.id === 'growth'
+      ? Math.max(0, overall(skills) - overall(s.player.skills))
+      : goal.id === 'performance'
+        ? s.player.role === 'batter'
+          ? sim.batting.h + sim.minorBatting.h
+          : Math.floor((sim.pitching.outs + sim.minorPitching.outs) / 3)
+        : pro
+          ? sim.registrationDays
+          : s.player.role === 'batter'
+            ? sim.batting.g
+            : sim.pitching.g;
+  const event = s.seasonEvent?.choice ? seasonEventDetails(s) : null;
+  const option = event?.options.find((o) => o.id === s.seasonEvent!.choice);
+  s.history.push({
+    ...partial,
+    leaders,
+    awards,
+    goal: {
+      id: goal.id,
+      label: goal.label,
+      target: goal.target,
+      current,
+      unit: goal.unit,
+      achieved: current >= goal.target,
+    },
+    ...(event && option
+      ? {
+          story: {
+            kind: event.kind,
+            choice: option.id,
+            title: event.title,
+            label: option.label,
+            effect: option.effect,
+          },
+        }
+      : {}),
+  });
+  delete s.seasonEvent;
   s.player.skills = skills;
   s.player.squad = sim.squad;
   s.player.trust = sim.trust;
   s.player.fatigue = sim.fatigue;
   s.player.injuryDays = sim.injuryDays;
-  s.player.money += (pro ? s.player.salary : 150) - cost;
+  const militaryMonths =
+    s.player.military?.status === 'serving' ? Math.min(12, s.player.military.months) : 0;
+  s.player.money +=
+    (pro
+      ? Math.round((s.player.salary * (12 - militaryMonths)) / 12) + militaryMonths * 150
+      : 150) - cost;
+  if (s.player.military?.status === 'serving') {
+    s.player.military.months = Math.max(0, s.player.military.months - 12);
+    if (!s.player.military.months) s.player.military.status = 'completed';
+    notes.push(
+      `상무 복무 ${militaryMonths}개월. 복무 기간에는 구단 연봉 대신 게임 내 월 150만원의 복무 수당을 적용했습니다.`,
+    );
+  }
   s.phase = s.player.age >= 40 ? 'retired' : 'offseason';
   s.offers = s.phase === 'retired' ? [] : offersFor(s);
   s.selectedOffer = s.offers[0]?.id ?? null;
@@ -1542,6 +1936,23 @@ export function nextSeason(input: GameState): GameState {
   if (p.stage === 'pro') {
     const offer = s.offers.find((o) => o.id === s.selectedOffer);
     if (!offer) throw new Error('다음 시즌 계약을 선택해주세요.');
+    const eligibility = kboEligibility(s);
+    if (p.league === 'KBO') {
+      if (offer.usesFA && !eligibility.fa) throw new Error('FA 자격을 아직 충족하지 못했습니다.');
+      if (
+        offer.league !== 'KBO' &&
+        !(offer.usesFA && eligibility.fa) &&
+        !(eligibility.posting && s.postingDecision?.approved)
+      )
+        throw new Error('해외 진출에는 FA 자격 또는 포스팅 자격과 구단 승인이 필요합니다.');
+      if (offer.league === 'KBO' && offer.team !== p.team && !(offer.usesFA && eligibility.fa))
+        throw new Error('다른 KBO 구단으로 이적하려면 FA 자격을 행사해야 합니다.');
+    }
+    if (
+      ['scheduled', 'serving'].includes(p.military?.status ?? '') &&
+      (offer.team !== p.team || offer.league !== p.league)
+    )
+      throw new Error('상무 복무 중에는 원소속 구단을 유지합니다.');
     if (offer.league !== p.league || offer.team !== p.team) {
       p.squad = 'second';
       p.trust = 45;
@@ -1549,6 +1960,7 @@ export function nextSeason(input: GameState): GameState {
     p.team = offer.team;
     p.league = offer.league;
     p.salary = offer.salary;
+    if (offer.usesFA) p.faSignedYear = s.year + 1;
   } else if (h.draft?.outcome === 'selected') {
     p.entry =
       p.stage === 'highschool'
@@ -1577,9 +1989,16 @@ export function nextSeason(input: GameState): GameState {
     p.league = 'IND';
     p.team = TEAMS.IND[s.year % TEAMS.IND.length];
   } else if (p.stage === 'highschool' || p.stage === 'college') p.grade++;
+  if (p.military?.status === 'scheduled') {
+    p.military.status = 'serving';
+    p.squad = 'second';
+  }
   p.age++;
   s.year++;
   s.phase = 'preseason';
+  delete s.negotiation;
+  delete s.postingDecision;
+  delete s.seasonEvent;
   s.offers = [];
   s.selectedOffer = null;
   s.careerChoice = null;
@@ -1648,6 +2067,13 @@ export function parseSave(raw: string): GameState {
     };
   }
   const s = stateSchema.parse(value);
+  if (
+    s.seasonEvent &&
+    (s.phase !== 'preseason' ||
+      s.seasonEvent.choice !== null ||
+      s.seasonEvent.kind !== seasonEventKind(s))
+  )
+    throw new Error('시즌 중 선택 정보가 올바르지 않습니다.');
   if (s.player.origin && !TALENTS[s.player.role].some((t) => t.id === s.player.origin!.archetype)) {
     throw new Error('선수 유형과 시작 컨셉이 일치하지 않습니다.');
   }
@@ -1681,12 +2107,25 @@ export function parseSave(raw: string): GameState {
   if (!validStage(s.player)) throw new Error('학년 또는 소속 단계가 올바르지 않습니다.');
   for (const h of s.history) {
     if (
+      h.draft?.pick &&
+      (h.draft.outcome !== 'selected' || Math.ceil(h.draft.pick / 10) !== h.draft.round)
+    )
+      throw new Error('드래프트 순위가 올바르지 않습니다.');
+    if (h.selections && new Set(h.selections.map((r) => r.kind)).size !== h.selections.length)
+      throw new Error('선발 심사 기록이 중복되었습니다.');
+    if (
+      h.negotiation &&
+      (h.negotiation.requested <= h.negotiation.originalOffer ||
+        h.negotiation.requested > h.negotiation.originalOffer * 2)
+    )
+      throw new Error('연봉 재협상 기록이 올바르지 않습니다.');
+    if (
       h.draft &&
       (h.draft.outcome === 'selected'
         ? !h.draft.team ||
           !TEAMS.KBO.includes(h.draft.team) ||
           h.draft.round < 1 ||
-          h.draft.round > 10 ||
+          h.draft.round > 11 ||
           h.draft.bonus <= 0
         : h.draft.team !== null || h.draft.round !== 0 || h.draft.bonus !== 0)
     )
@@ -1744,6 +2183,28 @@ export function parseSave(raw: string): GameState {
     s.offers.some((o) => !TEAMS[o.league].includes(o.team))
   )
     throw new Error('올바르지 않은 시즌 정보입니다.');
+  if (
+    s.negotiation &&
+    (s.phase !== 'offseason' ||
+      s.player.stage !== 'pro' ||
+      !s.history.at(-1)?.negotiation ||
+      JSON.stringify(s.negotiation) !== JSON.stringify(s.history.at(-1)!.negotiation))
+  )
+    throw new Error('연봉 협상 정보가 일치하지 않습니다.');
+  if (s.postingDecision && (s.phase !== 'offseason' || s.player.league !== 'KBO'))
+    throw new Error('포스팅 심사 정보가 올바르지 않습니다.');
+  if (
+    s.player.faSignedYear !== undefined &&
+    (s.player.faSignedYear < 2026 || s.player.faSignedYear > s.year)
+  )
+    throw new Error('FA 계약 연도가 올바르지 않습니다.');
+  if (
+    s.player.military &&
+    (['scheduled', 'serving'].includes(s.player.military.status)
+      ? s.player.military.months === 0 || s.player.stage !== 'pro' || s.player.league !== 'KBO'
+      : s.player.military.months !== 0)
+  )
+    throw new Error('복무 정보가 올바르지 않습니다.');
   const seasons = s.history.length - (s.phase === 'preseason' ? 0 : 1);
   if (
     seasons < 0 ||
@@ -1774,5 +2235,16 @@ export function parseSave(raw: string): GameState {
     (s.player.age === 40 && s.history.length === 41 - s.player.startAge)
   )
     throw new Error('은퇴 정보가 올바르지 않습니다.');
+  const oldRoutes = ['소속팀 재계약', 'FA 이적 제안', '구단 동의 · NPB 진출', 'MLB 포스팅'];
+  if (
+    s.phase === 'offseason' &&
+    s.player.stage === 'pro' &&
+    s.offers.some((o) => oldRoutes.includes(o.route))
+  ) {
+    const oldRenew = s.offers.find((o) => o.id === 'renew');
+    s.offers = offersFor(s);
+    if (oldRenew) s.offers.find((o) => o.id === 'renew')!.salary = oldRenew.salary;
+    if (!s.offers.some((o) => o.id === s.selectedOffer)) s.selectedOffer = 'renew';
+  }
   return s;
 }
