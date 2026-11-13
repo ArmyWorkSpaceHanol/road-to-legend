@@ -158,6 +158,20 @@ try {
   assert.equal((await saved()).player.team, TEAMS.HS[1]);
   await screenshot('life-high-school');
 
+  await nav('나의 기록실');
+  await page.getByRole('button', { name: '커리어 도전', exact: true }).click();
+  assert.equal(await page.getByRole('region', { name: '커리어 마일스톤' }).count(), 1);
+  assert.equal(await page.locator('.milestone-card').count(), 6);
+  assert.equal(await page.locator('.milestone-history li').count(), 0);
+  assert.equal(
+    await page
+      .getByRole('article', { name: '최고 타율', exact: true })
+      .locator('strong')
+      .textContent(),
+    '— ',
+  );
+  await screenshot('records-empty');
+
   await nav('선수 육성');
   await page.getByRole('button', { name: /안타로 증명하기/ }).click();
   await page.getByRole('button', { name: /장타력 강화/ }).click();
@@ -185,6 +199,21 @@ try {
   await page.getByLabel('기록 구분').selectOption('amateur');
   await page.getByRole('button', { name: '통산 기록', exact: true }).click();
   await screenshot('life-amateur-records');
+  const beforeRecords = await saved();
+  await page.getByRole('button', { name: '커리어 도전', exact: true }).click();
+  const hitProgress = page.getByRole('progressbar', { name: '통산 안타 진행률', exact: true });
+  assert.equal(Number(await hitProgress.getAttribute('value')), s.history[0].batting.h);
+  assert.ok(await page.locator('.milestone-history li').count());
+  await page.getByLabel('도전 기록 리그').selectOption('IND');
+  assert.equal(Number(await hitProgress.getAttribute('value')), 0);
+  assert.equal(await page.locator('.milestone-history li').count(), 0);
+  await page.getByLabel('기록 구분').selectOption('first');
+  assert.equal(await page.getByLabel('도전 기록 리그').inputValue(), 'all');
+  assert.equal(Number(await hitProgress.getAttribute('value')), 0);
+  await page.getByLabel('기록 구분').selectOption('amateur');
+  assert.equal(Number(await hitProgress.getAttribute('value')), s.history[0].batting.h);
+  assert.deepEqual(await saved(), beforeRecords);
+  await screenshot('records-amateur-milestones');
 
   await prepare();
   await page.getByLabel('주요 사건 자동 선택', { exact: false }).check();
@@ -365,6 +394,23 @@ try {
   await nav('나의 기록실');
   for (const stat of ['ERA', 'WHIP', 'FIP', 'K/9'])
     assert.ok(await page.getByText(stat, { exact: true }).count());
+  await page.getByRole('button', { name: '커리어 도전', exact: true }).click();
+  assert.equal(
+    Number(
+      await page
+        .getByRole('progressbar', { name: '통산 이닝 진행률', exact: true })
+        .getAttribute('value'),
+    ),
+    s.history[0].pitching.outs,
+  );
+  assert.equal(
+    await page.getByRole('article', { name: '최고 평균자책점', exact: true }).count(),
+    1,
+  );
+  await page.setViewportSize({ width: 320, height: 740 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  await screenshot('records-pitcher-mobile');
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByLabel('저장 파일 선택').setInputFiles({
     name: 'broken.json',
     mimeType: 'application/json',
@@ -394,6 +440,29 @@ try {
   assert.notEqual(await historyTable.first().locator('td').first().textContent(), firstYear);
   await page.getByRole('button', { name: '연도별 기록 이전 페이지' }).click();
   assert.equal(await historyTable.first().locator('td').first().textContent(), firstYear);
+  await page.getByRole('button', { name: '커리어 도전', exact: true }).click();
+  const achievementRows = page.locator('.milestone-history li');
+  assert.equal(await achievementRows.count(), 10);
+  const firstAchievement = await achievementRows.first().textContent();
+  await page.getByRole('button', { name: '마일스톤 달성 이력 다음 페이지' }).click();
+  assert.notEqual(await achievementRows.first().textContent(), firstAchievement);
+  await page.getByLabel('도전 기록 리그').selectOption('MLB');
+  await page.getByLabel('도전 기록 리그').selectOption('all');
+  assert.equal(await achievementRows.first().textContent(), firstAchievement);
+  assert.equal(
+    await page.getByRole('button', { name: '마일스톤 달성 이력 이전 페이지' }).isDisabled(),
+    true,
+  );
+  await screenshot('records-career-milestones');
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
+      false,
+    );
+    await screenshot(`records-career-mobile-${width}`);
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await nav('리그 순위');
   await page.getByRole('button', { name: '타자 순위', exact: true }).click();
   await page.getByRole('button', { name: '개인 순위 다음 페이지' }).click();
@@ -473,7 +542,7 @@ try {
   await cold.close();
   assert.deepEqual(errors, []);
   console.log(
-    'PASS: high-school start, talent cards, school years, college choice, draft success/failure, early entry and return, independent retry, roster decisions, separate stats, old-save migration, posting, backup/restore, season goals, persistent midseason choices, guided review navigation, evaluation pagination, draft projections, national and Sangmu selection, one-shot salary negotiation, posting consent, and mobile play.',
+    'PASS: high-school start, talent cards, school years, college choice, draft success/failure, early entry and return, independent retry, roster decisions, separate stats, old-save migration, posting, backup/restore, season goals, persistent midseason choices, guided review navigation, evaluation pagination, draft projections, national and Sangmu selection, one-shot salary negotiation, posting consent, career milestones, personal records, league filters, achievement pagination, and mobile play.',
   );
 } finally {
   await browser.close();
