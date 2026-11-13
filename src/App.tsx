@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import CareerCreation from './CareerCreation';
+import CareerRecords from './CareerRecords';
 import type { NewPlayer } from './CareerCreation';
 import Pagination, { usePagination } from './Pagination';
 import { SelectionCenter, SalaryNegotiation, KboContractRules } from './CareerOpportunities';
@@ -433,6 +434,7 @@ export default function App() {
     [mobileNav, setMobileNav] = useState(false);
   const [recordYear, setRecordYear] = useState('latest'),
     [leagueTab, setLeagueTab] = useState<'standings' | 'batting' | 'pitching'>('standings');
+  const [recordView, setRecordView] = useState<'stats' | 'milestones'>('stats');
   const [recordLevel, setRecordLevel] = useState<'first' | 'second' | 'amateur'>(
     initial.state.player.stage === 'pro' ? 'first' : 'amateur',
   );
@@ -460,6 +462,7 @@ export default function App() {
   const nextLabel = needsCareerDecision(state) ? '진로 선택하기' : `${state.year + 1} 시즌 준비`;
   const reviewNavigate = (to: Page) => {
     if (to === 'records') {
+      setRecordView('stats');
       setRecordYear('latest');
       setRecordLevel(latest?.stage === 'pro' ? 'first' : 'amateur');
     }
@@ -617,6 +620,7 @@ export default function App() {
       setModal(null);
       setPage('home');
       setRecordYear('latest');
+      setRecordView('stats');
       notify('저장한 커리어를 불러왔습니다.');
     } catch {
       notify('올바른 저장 파일이 아닙니다. 기존 커리어는 유지됩니다.');
@@ -640,6 +644,7 @@ export default function App() {
     );
     setHasCareer(true);
     setRecordLevel('amateur');
+    setRecordView('stats');
     setSaveError(null);
     setModal(null);
     setPage('home');
@@ -1342,8 +1347,10 @@ export default function App() {
               <div className="page-toolbar">
                 <div className="segmented">
                   <button
-                    className={recordYear !== 'all' ? 'active' : ''}
+                    className={recordView === 'stats' && recordYear !== 'all' ? 'active' : ''}
+                    aria-pressed={recordView === 'stats' && recordYear !== 'all'}
                     onClick={() => {
+                      setRecordView('stats');
                       setRecordYear('latest');
                       setRecordLevel(latest?.stage === 'pro' ? 'first' : 'amateur');
                     }}
@@ -1351,10 +1358,21 @@ export default function App() {
                     시즌 기록
                   </button>
                   <button
-                    className={recordYear === 'all' ? 'active' : ''}
-                    onClick={() => setRecordYear('all')}
+                    className={recordView === 'stats' && recordYear === 'all' ? 'active' : ''}
+                    aria-pressed={recordView === 'stats' && recordYear === 'all'}
+                    onClick={() => {
+                      setRecordView('stats');
+                      setRecordYear('all');
+                    }}
                   >
                     통산 기록
+                  </button>
+                  <button
+                    className={recordView === 'milestones' ? 'active' : ''}
+                    aria-pressed={recordView === 'milestones'}
+                    onClick={() => setRecordView('milestones')}
+                  >
+                    커리어 도전
                   </button>
                 </div>
                 <select
@@ -1366,86 +1384,101 @@ export default function App() {
                   <option value="first">프로 1군 기록</option>
                   <option value="second">프로 2군 기록</option>
                 </select>
-                <select
-                  aria-label="기록 시즌 선택"
-                  value={recordYear}
-                  onChange={(e) => {
-                    const year = e.target.value;
-                    setRecordYear(year);
-                    const season =
-                      year === 'latest'
-                        ? latest
-                        : state.history.find((h) => String(h.year) === year);
-                    if (year !== 'all' && season)
-                      setRecordLevel(
-                        season.stage === 'pro'
-                          ? recordLevel === 'second'
-                            ? 'second'
-                            : 'first'
-                          : 'amateur',
-                      );
-                  }}
-                >
-                  <option value="latest">최근 시즌</option>
-                  <option value="all">통산 전체</option>
-                  {[...state.history].reverse().map((h) => (
-                    <option key={h.year} value={h.year}>
-                      {h.year} · {stageLabel(h)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <StatCards {...recordStats} role={player.role} empty={!state.history.length} />
-              <Panel
-                title={
-                  recordYear === 'all'
-                    ? '통산 상세 기록'
-                    : `${recordSeason?.year ?? state.year} 상세 기록`
-                }
-                eyebrow={player.role === 'batter' ? 'BATTING STATISTICS' : 'PITCHING STATISTICS'}
-                action={
-                  <span className="subtle">
-                    {recordYear === 'all'
-                      ? `${recordLevel === 'first' ? '1군' : recordLevel === 'second' ? '2군' : '아마추어'} 합산`
-                      : (recordSeason?.team ?? '시즌 진행 전')}
-                  </span>
-                }
-              >
-                {state.history.length ? (
-                  <DetailedStats
-                    batting={recordStats.batting}
-                    pitching={recordStats.pitching}
-                    role={player.role}
-                  />
-                ) : (
-                  <Empty
-                    title="첫 기록을 기다리고 있어요"
-                    description="클럽하우스에서 시즌을 진행하면 상세 기록이 쌓입니다."
-                  />
+                {recordView === 'stats' && (
+                  <select
+                    aria-label="기록 시즌 선택"
+                    value={recordYear}
+                    onChange={(e) => {
+                      const year = e.target.value;
+                      setRecordYear(year);
+                      const season =
+                        year === 'latest'
+                          ? latest
+                          : state.history.find((h) => String(h.year) === year);
+                      if (year !== 'all' && season)
+                        setRecordLevel(
+                          season.stage === 'pro'
+                            ? recordLevel === 'second'
+                              ? 'second'
+                              : 'first'
+                            : 'amateur',
+                        );
+                    }}
+                  >
+                    <option value="latest">최근 시즌</option>
+                    <option value="all">통산 전체</option>
+                    {[...state.history].reverse().map((h) => (
+                      <option key={h.year} value={h.year}>
+                        {h.year} · {stageLabel(h)}
+                      </option>
+                    ))}
+                  </select>
                 )}
-              </Panel>
-              <Panel title="연도별 기록" eyebrow="SEASON BY SEASON">
-                <HistoryTable
-                  key={recordLevel}
-                  history={state.history
-                    .filter((h) =>
-                      recordLevel === 'amateur' ? h.stage !== 'pro' : h.stage === 'pro',
-                    )
-                    .map((h) =>
-                      recordLevel === 'second'
-                        ? { ...h, batting: h.minorBatting, pitching: h.minorPitching, war: 0 }
-                        : h,
-                    )}
-                  role={player.role}
-                />
-              </Panel>
-              <div className="info-bar">
-                <CircleHelp size={16} />
-                <span>
-                  타율·OPS 등 비율 기록은 합산한 원시 기록으로 다시 계산합니다. WAR·wRC+·FIP는 이
-                  게임의 간이 지표입니다.
-                </span>
               </div>
+              {recordView === 'milestones' ? (
+                <CareerRecords
+                  key={recordLevel}
+                  history={state.history}
+                  role={player.role}
+                  level={recordLevel}
+                />
+              ) : (
+                <>
+                  <StatCards {...recordStats} role={player.role} empty={!state.history.length} />
+                  <Panel
+                    title={
+                      recordYear === 'all'
+                        ? '통산 상세 기록'
+                        : `${recordSeason?.year ?? state.year} 상세 기록`
+                    }
+                    eyebrow={
+                      player.role === 'batter' ? 'BATTING STATISTICS' : 'PITCHING STATISTICS'
+                    }
+                    action={
+                      <span className="subtle">
+                        {recordYear === 'all'
+                          ? `${recordLevel === 'first' ? '1군' : recordLevel === 'second' ? '2군' : '아마추어'} 합산`
+                          : (recordSeason?.team ?? '시즌 진행 전')}
+                      </span>
+                    }
+                  >
+                    {state.history.length ? (
+                      <DetailedStats
+                        batting={recordStats.batting}
+                        pitching={recordStats.pitching}
+                        role={player.role}
+                      />
+                    ) : (
+                      <Empty
+                        title="첫 기록을 기다리고 있어요"
+                        description="클럽하우스에서 시즌을 진행하면 상세 기록이 쌓입니다."
+                      />
+                    )}
+                  </Panel>
+                  <Panel title="연도별 기록" eyebrow="SEASON BY SEASON">
+                    <HistoryTable
+                      key={recordLevel}
+                      history={state.history
+                        .filter((h) =>
+                          recordLevel === 'amateur' ? h.stage !== 'pro' : h.stage === 'pro',
+                        )
+                        .map((h) =>
+                          recordLevel === 'second'
+                            ? { ...h, batting: h.minorBatting, pitching: h.minorPitching, war: 0 }
+                            : h,
+                        )}
+                      role={player.role}
+                    />
+                  </Panel>
+                  <div className="info-bar">
+                    <CircleHelp size={16} />
+                    <span>
+                      타율·OPS 등 비율 기록은 합산한 원시 기록으로 다시 계산합니다. WAR·wRC+·FIP는
+                      이 게임의 간이 지표입니다.
+                    </span>
+                  </div>
+                </>
+              )}
             </>
           )}
 
