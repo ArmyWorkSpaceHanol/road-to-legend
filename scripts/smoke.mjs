@@ -150,7 +150,7 @@ try {
   await page.getByRole('dialog').waitFor();
   assert.equal(await saved(), null);
   await page.getByLabel('선수 이름').fill('김전설');
-  await page.getByLabel('출발 고등학교').selectOption(TEAMS.HS[1]);
+  await page.getByLabel('출발 고등학교').fill(TEAMS.HS[1]);
   await page.getByLabel('선호 팀', { exact: true }).selectOption(TEAMS.KBO[1]);
   await chooseCard(true);
   assert.equal((await saved()).player.age, 16);

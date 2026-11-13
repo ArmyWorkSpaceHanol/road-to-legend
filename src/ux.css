@@ -35,6 +35,11 @@
 .talent-back {
   display: flex;
 }
+.career-creation label small {
+  font-size: 12px;
+  line-height: 1.7;
+  color: #526249;
+}
 .phase-pill,
 .badge,
 .badge.neutral,
