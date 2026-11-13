@@ -10,6 +10,7 @@ import {
   resolveSeasonEvent,
   seasonCheckpoint,
   seasonEventKind,
+  seasonEventDetails,
   TEAMS,
 } from './game';
 import type { EventKind, GameState, Role } from './game';
@@ -36,6 +37,49 @@ function fixture(kind: EventKind, role: Role = 'batter', pro = false) {
 }
 
 describe('season decisions and goals', () => {
+  it('preserves older unfinished choices even when the event selection rules change', () => {
+    const old = makeCareer('이전 선택', 'batter', 'CF', undefined, 1);
+    old.seasonEvent = { kind: 'rest', choice: null };
+    expect(parseSave(JSON.stringify(old))).toEqual(old);
+    expect(parseSave(JSON.stringify(resolveSeasonEvent(old, 'steady')))).toBeDefined();
+  });
+  it('selects injury recovery and slumps from the actual career context', () => {
+    const injured = makeCareer('재활 선수');
+    injured.player.injuryDays = 21;
+    expect(seasonEventKind(injured)).toBe('comeback');
+    const slump = playSeason(makeCareer('슬럼프 선수'));
+    slump.phase = 'preseason';
+    slump.history[0].batting = {
+      ...slump.history[0].batting,
+      pa: 100,
+      ab: 100,
+      h: 0,
+      doubles: 0,
+      triples: 0,
+      hr: 0,
+    };
+    expect(seasonEventKind(slump)).toBe('slump');
+    expect(seasonEventDetails(beginSeason(injured)).title).toContain('부상');
+  });
+  it.each(['rival', 'slump', 'comeback'] as const)(
+    'applies both new %s choices after the first half and keeps saves valid',
+    (kind) => {
+      for (const role of ['batter', 'pitcher'] as const) {
+        const s = fixture('technique', role, true);
+        s.seasonEvent = { kind, choice: null };
+        const checkpoint = seasonCheckpoint(s);
+        const bold = resolveSeasonEvent(s, 'bold'),
+          steady = resolveSeasonEvent(s, 'steady');
+        for (const result of [bold, steady]) {
+          expect(result.history[0].roster.slice(0, 12)).toEqual(checkpoint.roster);
+          expect(result.history[0].story?.kind).toBe(kind);
+          expect(parseSave(JSON.stringify(result))).toEqual(result);
+        }
+        expect(bold.player.skills).not.toEqual(steady.player.skills);
+        if (kind === 'comeback') expect(steady.history[0].roster[12].available).toBe(0);
+      }
+    },
+  );
   it('persists an unfinished checkpoint without charging training twice', () => {
     const s = makeCareer('전반기 선수');
     s.support = 'coach';

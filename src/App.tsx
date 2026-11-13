@@ -2,6 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import CareerCreation from './CareerCreation';
 import CareerRecords from './CareerRecords';
+import CareerLibrary from './CareerLibrary';
+import CareerGrowth from './CareerGrowth';
+import { persistCareer, replaceCareer } from './careerStorage';
+import type { SlotId } from './careerStorage';
+import { defaultRoute, useGameRoute } from './navigation';
+import type { Page, Route } from './navigation';
 import type { NewPlayer } from './CareerCreation';
 import Pagination, { usePagination } from './Pagination';
 import { SelectionCenter, SalaryNegotiation, KboContractRules } from './CareerOpportunities';
@@ -24,6 +30,7 @@ import {
   Download,
   Dumbbell,
   Flame,
+  FolderOpen,
   Globe2,
   GraduationCap,
   History,
@@ -81,7 +88,6 @@ import type {
   TalentCard,
 } from './game';
 
-type Page = 'review' | 'home' | 'training' | 'records' | 'leaders' | 'awards' | 'market' | 'career';
 const NAV: { id: Page; label: string; english: string; icon: typeof Trophy }[] = [
   { id: 'home', label: '클럽하우스', english: 'CLUBHOUSE', icon: LayoutDashboard },
   { id: 'review', label: '시즌 결산', english: 'SEASON REVIEW', icon: CalendarDays },
@@ -91,6 +97,7 @@ const NAV: { id: Page; label: string; english: string; icon: typeof Trophy }[] =
   { id: 'awards', label: '시상식', english: 'AWARDS', icon: Trophy },
   { id: 'market', label: '진로 · 계약', english: 'CAREER PATH', icon: Globe2 },
   { id: 'career', label: '커리어 히스토리', english: 'CAREER', icon: History },
+  { id: 'saves', label: '커리어 보관함', english: 'SAVED CAREERS', icon: FolderOpen },
 ];
 const REVIEW_STEPS: { page: Page; label: string }[] = [
   { page: 'review', label: '시즌 결산' },
@@ -186,7 +193,7 @@ function Ballpark() {
         textAnchor="middle"
         fill="#cce0b8"
         fillOpacity=".5"
-        fontSize="10"
+        fontSize="12"
         letterSpacing="5"
       >
         THE FIELD IS YOURS
@@ -288,7 +295,7 @@ function Radar({ skills, role }: { skills: Skills; role: Role }) {
             textAnchor="middle"
             dominantBaseline="middle"
             fill="#757d72"
-            fontSize="10"
+            fontSize="12"
           >
             {labels[k]}{' '}
             <tspan fontWeight="700" fill="#31533c">
@@ -347,7 +354,7 @@ function StatCards({
               <>
                 <span className="little-dot" />
                 {empty
-                  ? '시즌 시작을 기다리는 중'
+                  ? '아직 출장 기록이 없습니다'
                   : i === 0
                     ? `${role === 'batter' ? batting.g : pitching.g}경기 출장`
                     : '정규시즌 최종 기록'}
@@ -379,7 +386,12 @@ function Standings({
   const rows = compact ? season.standings.slice(0, 5) : season.standings;
   const first = season.standings[0].w;
   return (
-    <div className="table-scroll">
+    <div
+      className="table-scroll"
+      tabIndex={0}
+      role="region"
+      aria-label="가로로 이동할 수 있는 기록표"
+    >
       <table className="standings-table">
         <thead>
           <tr>
@@ -420,10 +432,14 @@ function Standings({
 
 export default function App() {
   const [initial] = useState(load),
-    [state, setState] = useState(initial.state),
-    [page, setPage] = useState<Page>(
+    [state, setState] = useState(initial.state);
+  const { route, updateRoute } = useGameRoute(
+    defaultRoute(
       initial.state.seasonEvent ? 'home' : initial.state.phase !== 'preseason' ? 'review' : 'home',
-    );
+      initial.state.player.stage === 'pro' ? 'first' : 'amateur',
+    ),
+  );
+  const { page, recordYear, recordLevel, recordView, leagueTab } = route;
   const [saveError, setSaveError] = useState(initial.error),
     [toast, setToast] = useState(''),
     [busy, setBusy] = useState(false);
@@ -432,12 +448,11 @@ export default function App() {
       initial.state.seasonEvent ? 'event' : initial.exists ? null : 'new',
     ),
     [mobileNav, setMobileNav] = useState(false);
-  const [recordYear, setRecordYear] = useState('latest'),
-    [leagueTab, setLeagueTab] = useState<'standings' | 'batting' | 'pitching'>('standings');
-  const [recordView, setRecordView] = useState<'stats' | 'milestones'>('stats');
-  const [recordLevel, setRecordLevel] = useState<'first' | 'second' | 'amateur'>(
-    initial.state.player.stage === 'pro' ? 'first' : 'amateur',
+  const [smallScreen, setSmallScreen] = useState(
+    () => window.matchMedia('(max-width: 640px)').matches,
   );
+  const sidebarRef = useRef<HTMLElement>(null);
+  const menuRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null),
     latest = state.history.at(-1),
     player = state.player;
@@ -446,6 +461,13 @@ export default function App() {
     total = totals(state.history);
   const recordSeason =
     recordYear === 'latest' ? latest : state.history.find((h) => String(h.year) === recordYear);
+  const recordSeasons = state.history.filter((h) =>
+    recordLevel === 'amateur' ? h.stage !== 'pro' : h.stage === 'pro',
+  );
+  const hasRecordScope =
+    recordYear === 'all'
+      ? recordSeasons.length > 0
+      : !!recordSeason && recordSeasons.includes(recordSeason);
   const recordStats =
     recordYear === 'all'
       ? totals(state.history, recordLevel)
@@ -455,21 +477,42 @@ export default function App() {
           ? { batting: recordSeason.minorBatting, pitching: recordSeason.minorPitching, war: 0 }
           : recordSeason
         : { batting: emptyBat(), pitching: emptyPitch(), war: 0 };
+  const hasRecord =
+    hasRecordScope &&
+    (player.role === 'batter'
+      ? recordStats.batting.g > 0 || recordStats.batting.pa > 0
+      : recordStats.pitching.g > 0 || recordStats.pitching.outs > 0);
+  const availableRecordLevel = state.history.some(
+    (h) => h.stage === 'pro' && (player.role === 'batter' ? h.batting.g : h.pitching.g) > 0,
+  )
+    ? 'first'
+    : state.history.some(
+          (h) =>
+            h.stage === 'pro' &&
+            (player.role === 'batter' ? h.minorBatting.g : h.minorPitching.g) > 0,
+        )
+      ? 'second'
+      : 'amateur';
   const preseason = state.phase === 'preseason';
   const trainingOpen = preseason && !state.seasonEvent && !busy && !saveError;
   const reviewIndex = REVIEW_STEPS.findIndex((step) => step.page === page);
   const reviewing = state.phase !== 'preseason' && !!latest && reviewIndex >= 0;
   const nextLabel = needsCareerDecision(state) ? '진로 선택하기' : `${state.year + 1} 시즌 준비`;
   const reviewNavigate = (to: Page) => {
-    if (to === 'records') {
-      setRecordView('stats');
-      setRecordYear('latest');
-      setRecordLevel(latest?.stage === 'pro' ? 'first' : 'amateur');
-    }
-    navigate(to);
+    navigate(
+      to,
+      to === 'records'
+        ? {
+            recordView: 'stats',
+            recordYear: 'latest',
+            recordLevel: latest?.stage === 'pro' ? 'first' : 'amateur',
+            recordLeague: 'all',
+          }
+        : {},
+    );
   };
-  const navigate = (to: Page) => {
-    setPage(to);
+  const navigate = (to: Page, patch: Partial<Route> = {}) => {
+    updateRoute({ page: to, ...patch });
     setMobileNav(false);
     window.scrollTo({ top: 0, behavior: 'instant' });
   };
@@ -477,12 +520,52 @@ export default function App() {
   useEffect(() => {
     document.querySelector<HTMLElement>('h1')?.focus({ preventScroll: true });
   }, [page]);
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 640px)');
+    const resize = () => {
+      setSmallScreen(query.matches);
+      if (!query.matches) setMobileNav(false);
+    };
+    query.addEventListener('change', resize);
+    return () => query.removeEventListener('change', resize);
+  }, []);
+  useEffect(() => {
+    if (!mobileNav || !smallScreen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    sidebarRef.current?.querySelector<HTMLElement>('[aria-current="page"]')?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMobileNav(false);
+      }
+      if (event.key !== 'Tab') return;
+      const controls = Array.from(
+        sidebarRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href]') ?? [],
+      ).filter((el) => el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden');
+      const first = controls[0],
+        last = controls.at(-1);
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = previous;
+      menuRef.current?.focus();
+    };
+  }, [mobileNav, smallScreen]);
 
   useEffect(() => {
     if (!hasCareer) return;
     if (initial.error && saveError === initial.error) return;
     try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+      persistCareer(localStorage, state);
       setSaveError(null);
     } catch {
       setSaveError('자동 저장이 실패했습니다. 저장 공간을 확인하고 백업 파일을 내려받아주세요.');
@@ -530,10 +613,11 @@ export default function App() {
 
   const showSeasonResult = (next: GameState) => {
     setState(next);
-    setRecordLevel(next.player.stage === 'pro' ? 'first' : 'amateur');
-    setRecordYear('latest');
     setModal(null);
-    navigate('review');
+    navigate('review', {
+      recordLevel: next.player.stage === 'pro' ? 'first' : 'amateur',
+      recordYear: 'latest',
+    });
     notify(`${next.year} 시즌이 끝났습니다. 목표와 나의 선택을 돌아보세요.`);
   };
   const finishEvent = (choice: EventChoice) => {
@@ -580,7 +664,7 @@ export default function App() {
             navigate('training');
             notify('새 시즌입니다. 목표와 육성 계획을 선택해주세요.');
           }
-          setRecordYear('latest');
+          updateRoute({ recordYear: 'latest' }, true);
         } catch (e) {
           notify(e instanceof Error ? e.message : '진행 중 문제가 발생했습니다.');
         }
@@ -611,45 +695,61 @@ export default function App() {
         )
       )
         return;
+      replaceCareer(localStorage, imported, '파일 불러오기 전');
       setSaveError(null);
       setHasCareer(true);
       simulationId.current++;
       setBusy(false);
       setState(imported);
-      setRecordLevel(imported.player.stage === 'pro' ? 'first' : 'amateur');
       setModal(null);
-      setPage('home');
-      setRecordYear('latest');
-      setRecordView('stats');
+      navigate('home', defaultRoute('home', imported.player.stage === 'pro' ? 'first' : 'amateur'));
       notify('저장한 커리어를 불러왔습니다.');
     } catch {
-      notify('올바른 저장 파일이 아닙니다. 기존 커리어는 유지됩니다.');
+      notify('올바른 저장 파일이 아니거나 백업 공간이 부족합니다. 기존 커리어는 유지됩니다.');
     } finally {
       if (inputRef.current) inputRef.current.value = '';
     }
   };
   const newCareer = (newPlayer: NewPlayer, card: TalentCard, seed: number) => {
+    const next = makeCareer(
+      newPlayer.name,
+      newPlayer.role,
+      newPlayer.position,
+      newPlayer.team,
+      seed,
+      card,
+      newPlayer.school,
+    );
+    try {
+      replaceCareer(localStorage, next, '새 커리어 시작 전');
+    } catch {
+      notify('자동 백업에 실패했습니다. 현재 커리어를 파일로 백업하고 저장 공간을 확인해주세요.');
+      return;
+    }
     simulationId.current++;
     setBusy(false);
-    setState(
-      makeCareer(
-        newPlayer.name,
-        newPlayer.role,
-        newPlayer.position,
-        newPlayer.team,
-        seed,
-        card,
-        newPlayer.school,
-      ),
-    );
+    setState(next);
     setHasCareer(true);
-    setRecordLevel('amateur');
-    setRecordView('stats');
     setSaveError(null);
     setModal(null);
-    setPage('home');
-    setRecordYear('latest');
+    navigate('home', defaultRoute('home', 'amateur'));
     notify('새로운 야구 인생이 시작됩니다.');
+  };
+  const loadSlot = (next: GameState, slot: SlotId | null) => {
+    replaceCareer(
+      localStorage,
+      next,
+      slot ? `${slot}번 슬롯 불러오기 전` : '자동 백업 복원 전',
+      slot,
+    );
+    simulationId.current++;
+    setState(next);
+    setHasCareer(true);
+    setSaveError(null);
+    setBusy(false);
+    setModal(next.seasonEvent ? 'event' : null);
+    navigate('home', defaultRoute('home', next.player.stage === 'pro' ? 'first' : 'amateur'));
+    notify('보관한 커리어를 불러왔습니다. 이전 선수는 자동 백업에 남겼습니다.');
   };
   const actionButton = (
     <button
@@ -692,11 +792,26 @@ export default function App() {
       {mobileNav && (
         <button
           className="nav-backdrop"
-          aria-label="메뉴 닫기"
+          aria-label="메뉴 배경 닫기"
           onClick={() => setMobileNav(false)}
         />
       )}
-      <aside className={`sidebar ${mobileNav ? 'open' : ''}`} inert={modal ? true : undefined}>
+      <aside
+        id="game-menu"
+        ref={sidebarRef}
+        className={`sidebar ${mobileNav ? 'open' : ''}`}
+        inert={!!modal || (smallScreen && !mobileNav) ? true : undefined}
+        role={smallScreen && mobileNav ? 'dialog' : undefined}
+        aria-modal={smallScreen && mobileNav ? true : undefined}
+        aria-label="게임 메뉴"
+      >
+        <button
+          className="sidebar-close icon-button"
+          aria-label="메뉴 닫기"
+          onClick={() => setMobileNav(false)}
+        >
+          <X size={22} />
+        </button>
         <button className="brand" onClick={() => navigate('home')} aria-label="Road to Legend 홈">
           <Baseball />
           <span>
@@ -746,7 +861,13 @@ export default function App() {
             <div className="stamp-line" />
             <span>WRITE YOUR OWN LEGACY</span>
           </div>
-          <button className="help-button" onClick={() => setModal('help')}>
+          <button
+            className="help-button"
+            onClick={() => {
+              setMobileNav(false);
+              setModal('help');
+            }}
+          >
             <CircleHelp size={16} /> 플레이 가이드 <ArrowUpRight size={14} />
           </button>
           <div className="sidebar-version">
@@ -754,12 +875,15 @@ export default function App() {
           </div>
         </div>
       </aside>
-      <div className="workspace" inert={modal ? true : undefined}>
+      <div className="workspace" inert={!!modal || (smallScreen && mobileNav) ? true : undefined}>
         <header className="topbar">
           <div className="breadcrumb">
             <button
               className="mobile-menu icon-button"
+              ref={menuRef}
               aria-label="메뉴 열기"
+              aria-expanded={mobileNav}
+              aria-controls="game-menu"
               onClick={() => setMobileNav(true)}
             >
               <Menu size={22} />
@@ -806,7 +930,9 @@ export default function App() {
                             ? '빛나는 한 시즌을 보낸 선수들에게 박수를.'
                             : page === 'market'
                               ? '더 넓은 무대로. 커리어의 다음 장을 선택하세요.'
-                              : '첫 타석부터 마지막 경기까지, 나만의 발자취.'}
+                              : page === 'saves'
+                                ? '서로 다른 선수의 커리어를 보관하고 이어가세요.'
+                                : '첫 타석부터 마지막 경기까지, 나만의 발자취.'}
               </p>
             </div>
             <div className="heading-actions">
@@ -1350,9 +1476,12 @@ export default function App() {
                     className={recordView === 'stats' && recordYear !== 'all' ? 'active' : ''}
                     aria-pressed={recordView === 'stats' && recordYear !== 'all'}
                     onClick={() => {
-                      setRecordView('stats');
-                      setRecordYear('latest');
-                      setRecordLevel(latest?.stage === 'pro' ? 'first' : 'amateur');
+                      updateRoute({
+                        recordView: 'stats',
+                        recordYear: 'latest',
+                        recordLevel: latest?.stage === 'pro' ? 'first' : 'amateur',
+                        recordLeague: 'all',
+                      });
                     }}
                   >
                     시즌 기록
@@ -1361,8 +1490,7 @@ export default function App() {
                     className={recordView === 'stats' && recordYear === 'all' ? 'active' : ''}
                     aria-pressed={recordView === 'stats' && recordYear === 'all'}
                     onClick={() => {
-                      setRecordView('stats');
-                      setRecordYear('all');
+                      updateRoute({ recordView: 'stats', recordYear: 'all' });
                     }}
                   >
                     통산 기록
@@ -1370,15 +1498,27 @@ export default function App() {
                   <button
                     className={recordView === 'milestones' ? 'active' : ''}
                     aria-pressed={recordView === 'milestones'}
-                    onClick={() => setRecordView('milestones')}
+                    onClick={() => updateRoute({ recordView: 'milestones' })}
                   >
                     커리어 도전
+                  </button>
+                  <button
+                    className={recordView === 'growth' ? 'active' : ''}
+                    aria-pressed={recordView === 'growth'}
+                    onClick={() => updateRoute({ recordView: 'growth' })}
+                  >
+                    성장 비교
                   </button>
                 </div>
                 <select
                   aria-label="기록 구분"
                   value={recordLevel}
-                  onChange={(e) => setRecordLevel(e.target.value as typeof recordLevel)}
+                  onChange={(e) =>
+                    updateRoute({
+                      recordLevel: e.target.value as typeof recordLevel,
+                      recordLeague: 'all',
+                    })
+                  }
                 >
                   <option value="amateur">아마추어 기록</option>
                   <option value="first">프로 1군 기록</option>
@@ -1390,19 +1530,24 @@ export default function App() {
                     value={recordYear}
                     onChange={(e) => {
                       const year = e.target.value;
-                      setRecordYear(year);
                       const season =
                         year === 'latest'
                           ? latest
                           : state.history.find((h) => String(h.year) === year);
-                      if (year !== 'all' && season)
-                        setRecordLevel(
-                          season.stage === 'pro'
-                            ? recordLevel === 'second'
-                              ? 'second'
-                              : 'first'
-                            : 'amateur',
-                        );
+                      updateRoute({
+                        recordYear: year,
+                        ...(year !== 'all' && season
+                          ? {
+                              recordLevel:
+                                season.stage === 'pro'
+                                  ? recordLevel === 'second'
+                                    ? ('second' as const)
+                                    : ('first' as const)
+                                  : ('amateur' as const),
+                              recordLeague: 'all' as const,
+                            }
+                          : {}),
+                      });
                     }}
                   >
                     <option value="latest">최근 시즌</option>
@@ -1421,10 +1566,39 @@ export default function App() {
                   history={state.history}
                   role={player.role}
                   level={recordLevel}
+                  league={route.recordLeague}
+                  onLeagueChange={(recordLeague) => updateRoute({ recordLeague })}
+                />
+              ) : recordView === 'growth' ? (
+                <CareerGrowth
+                  history={state.history}
+                  role={player.role}
+                  level={recordLevel}
+                  league={route.recordLeague}
+                  metricId={route.growthMetric}
+                  onMetricChange={(growthMetric) => updateRoute({ growthMetric })}
+                  onLeagueChange={(recordLeague) => updateRoute({ recordLeague })}
                 />
               ) : (
                 <>
-                  <StatCards {...recordStats} role={player.role} empty={!state.history.length} />
+                  <StatCards {...recordStats} role={player.role} empty={!hasRecord} />
+                  {!hasRecord && state.history.length > 0 && (
+                    <div className="info-bar">
+                      <span>현재 선택한 기록 구분에는 완료한 시즌이 없습니다.</span>
+                      <button
+                        className="button secondary"
+                        onClick={() =>
+                          updateRoute({
+                            recordLevel: availableRecordLevel,
+                            recordYear: 'all',
+                            recordLeague: 'all',
+                          })
+                        }
+                      >
+                        보유한 기록 보기
+                      </button>
+                    </div>
+                  )}
                   <Panel
                     title={
                       recordYear === 'all'
@@ -1438,11 +1612,13 @@ export default function App() {
                       <span className="subtle">
                         {recordYear === 'all'
                           ? `${recordLevel === 'first' ? '1군' : recordLevel === 'second' ? '2군' : '아마추어'} 합산`
-                          : (recordSeason?.team ?? '시즌 진행 전')}
+                          : hasRecord
+                            ? recordSeason?.team
+                            : '해당 범위 출장 기록 없음'}
                       </span>
                     }
                   >
-                    {state.history.length ? (
+                    {hasRecord ? (
                       <DetailedStats
                         batting={recordStats.batting}
                         pitching={recordStats.pitching}
@@ -1450,8 +1626,8 @@ export default function App() {
                       />
                     ) : (
                       <Empty
-                        title="첫 기록을 기다리고 있어요"
-                        description="클럽하우스에서 시즌을 진행하면 상세 기록이 쌓입니다."
+                        title="선택한 범위의 기록이 없습니다"
+                        description="다른 기록 구분이나 시즌을 선택해보세요. 프로 1군 기록은 실제 1군 출장 후 쌓입니다."
                       />
                     )}
                   </Panel>
@@ -1490,7 +1666,10 @@ export default function App() {
                     <button
                       key={t}
                       className={leagueTab === t ? 'active' : ''}
-                      onClick={() => setLeagueTab(t)}
+                      aria-pressed={leagueTab === t}
+                      onClick={() =>
+                        updateRoute({ leagueTab: t, leaderSort: 'war', qualified: false })
+                      }
                     >
                       {['구단 순위', '타자 순위', '투수 순위'][i]}
                     </button>
@@ -1519,6 +1698,10 @@ export default function App() {
                     leaders={latest.leaders}
                     role={leagueTab === 'batting' ? 'batter' : 'pitcher'}
                     games={SEASON_GAMES[latest.league]}
+                    sort={route.leaderSort}
+                    qualified={route.qualified}
+                    onSort={(leaderSort) => updateRoute({ leaderSort })}
+                    onQualified={(qualified) => updateRoute({ qualified })}
                   />
                 ) : (
                   <Empty
@@ -1611,45 +1794,85 @@ export default function App() {
             </>
           )}
 
-          {page === 'market' && (
-            <SelectionCenter
-              key={`selection-${state.year}`}
+          {page === 'saves' && (
+            <CareerLibrary
               state={state}
-              busy={busy || !!saveError}
-              onChange={setState}
+              disabled={busy}
+              canSave={!saveError && hasCareer}
+              onLoad={loadSlot}
             />
           )}
-          {page === 'market' &&
-            (player.stage === 'pro' ? (
-              <>
-                <LifeOverview
-                  state={state}
-                  onOpen={() =>
-                    document.querySelector('.roster-report')?.scrollIntoView({ behavior: 'smooth' })
-                  }
-                />
-                <KboContractRules state={state} busy={busy || !!saveError} onChange={setState} />
-                <SalaryNegotiation
-                  key={state.year}
+          {page === 'market' && (
+            <>
+              <div className="page-toolbar">
+                <div className="segmented" role="group" aria-label="진로 화면 구분">
+                  {(
+                    [
+                      ['contract', '계약과 진로'],
+                      ['selection', '대표팀 · 상무'],
+                      ...(player.stage === 'pro' ? [['roster', '감독 평가']] : []),
+                    ] as [Route['marketTab'], string][]
+                  ).map(([id, label]) => (
+                    <button
+                      key={id}
+                      aria-pressed={route.marketTab === id}
+                      className={route.marketTab === id ? 'active' : ''}
+                      onClick={() => updateRoute({ marketTab: id })}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {route.marketTab === 'selection' ? (
+                <SelectionCenter
+                  key={`selection-${state.year}`}
                   state={state}
                   busy={busy || !!saveError}
                   onChange={setState}
                 />
-                <Market
-                  busy={busy || !!saveError}
-                  state={state}
-                  onSelect={(id) => setState({ ...state, selectedOffer: id })}
-                />
+              ) : route.marketTab === 'roster' && player.stage === 'pro' ? (
                 <RosterReport key={latest?.year} season={latest} />
-              </>
-            ) : (
-              <CareerPath
-                busy={busy || !!saveError}
-                key={state.year}
-                state={state}
-                onChange={setState}
-              />
-            ))}
+              ) : player.stage === 'pro' ? (
+                <>
+                  <LifeOverview state={state} onOpen={() => updateRoute({ marketTab: 'roster' })} />
+                  <Market
+                    busy={busy || !!saveError}
+                    state={state}
+                    onSelect={(id) => setState({ ...state, selectedOffer: id })}
+                  />
+                  {state.phase === 'offseason' &&
+                    state.offers.some((o) => o.id === 'renew') &&
+                    !['scheduled', 'serving'].includes(player.military?.status ?? '') && (
+                      <details className="panel contract-details">
+                        <summary>연봉 재협상 · 구단 제안 확인</summary>
+                        <SalaryNegotiation
+                          key={state.year}
+                          state={state}
+                          busy={busy || !!saveError}
+                          onChange={setState}
+                        />
+                      </details>
+                    )}
+                  <details className="panel contract-details">
+                    <summary>FA · 포스팅 자격과 구단 승인</summary>
+                    <KboContractRules
+                      state={state}
+                      busy={busy || !!saveError}
+                      onChange={setState}
+                    />
+                  </details>
+                </>
+              ) : (
+                <CareerPath
+                  busy={busy || !!saveError}
+                  key={state.year}
+                  state={state}
+                  onChange={setState}
+                />
+              )}
+            </>
+          )}
 
           {page === 'career' && (
             <>
@@ -1916,6 +2139,15 @@ export default function App() {
                 <CareerCreation replacing={hasCareer} onStart={newCareer} />
                 {!hasCareer && (
                   <div className="creation-import">
+                    <button
+                      onClick={() => {
+                        setModal(null);
+                        navigate('saves');
+                      }}
+                    >
+                      <FolderOpen size={16} />
+                      커리어 보관함 열기
+                    </button>
                     <button onClick={() => inputRef.current?.click()}>
                       <Upload size={13} />
                       저장한 커리어 불러오기
@@ -2100,7 +2332,12 @@ function HistoryTable({ history, role }: { history: Season[]; role: Role }) {
     );
   return (
     <>
-      <div className="table-scroll">
+      <div
+        className="table-scroll"
+        tabIndex={0}
+        role="region"
+        aria-label="가로로 이동할 수 있는 기록표"
+      >
         <table className="records-table">
           <thead>
             <tr>
@@ -2174,8 +2411,23 @@ function HistoryTable({ history, role }: { history: Season[]; role: Role }) {
     </>
   );
 }
-function LeaderTable({ leaders, role, games }: { leaders: Leader[]; role: Role; games: number }) {
-  const [sort, setSort] = useState('war');
+function LeaderTable({
+  leaders,
+  role,
+  games,
+  sort,
+  qualified,
+  onSort,
+  onQualified,
+}: {
+  leaders: Leader[];
+  role: Role;
+  games: number;
+  sort: string;
+  qualified: boolean;
+  onSort: (sort: string) => void;
+  onQualified: (qualified: boolean) => void;
+}) {
   const keys =
     role === 'batter'
       ? ['war', 'avg', 'hr', 'rbi', 'ops', 'sb']
@@ -2191,7 +2443,6 @@ function LeaderTable({ leaders, role, games }: { leaders: Leader[]; role: Role; 
         : k in pitchingRates(p.pitching)
           ? pitchingRates(p.pitching)[k as keyof ReturnType<typeof pitchingRates>]
           : p.pitching[k as keyof Pitching];
-  const [qualified, setQualified] = useState(false);
   const rows = leaders
     .filter(
       (p) =>
@@ -2213,13 +2464,18 @@ function LeaderTable({ leaders, role, games }: { leaders: Leader[]; role: Role; 
           <input
             type="checkbox"
             checked={qualified}
-            onChange={(e) => setQualified(e.target.checked)}
+            onChange={(e) => onQualified(e.target.checked)}
           />
           규정 {role === 'batter' ? '타석' : '이닝'} 충족 선수만
         </label>
         <span>열 이름을 누르면 정렬됩니다</span>
       </div>
-      <div className="table-scroll">
+      <div
+        className="table-scroll"
+        tabIndex={0}
+        role="region"
+        aria-label="가로로 이동할 수 있는 기록표"
+      >
         <table>
           <thead>
             <tr>
@@ -2237,10 +2493,7 @@ function LeaderTable({ leaders, role, games }: { leaders: Leader[]; role: Role; 
                       : 'none'
                   }
                 >
-                  <button
-                    className={effectiveSort === k ? 'sorted' : ''}
-                    onClick={() => setSort(k)}
-                  >
+                  <button className={effectiveSort === k ? 'sorted' : ''} onClick={() => onSort(k)}>
                     {k.toUpperCase()}
                     {effectiveSort === k &&
                       (['era', 'whip'].includes(k) ? (

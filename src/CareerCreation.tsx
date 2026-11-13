@@ -182,8 +182,8 @@ export default function CareerCreation({
             </label>
             {replacing && (
               <div className="info-bar">
-                마지막 카드 선택을 확정하면 현재 커리어를 교체합니다. 필요한 기록은 먼저
-                백업해주세요.
+                마지막 카드 선택을 확정하면 현재 커리어를 자동 백업한 뒤 교체합니다. 보관함에서
+                복원할 수 있으며, 오래 보관할 기록은 파일로 내려받아주세요.
               </div>
             )}
             <button className="button primary" type="submit">

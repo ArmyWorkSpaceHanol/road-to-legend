@@ -195,7 +195,8 @@ try {
   for (const stat of ['BABIP', 'OPS', 'wRC+'])
     assert.ok(await page.getByText(stat, { exact: true }).count());
   await page.getByLabel('기록 구분').selectOption('first');
-  assert.equal(await page.locator('.stat-card strong').first().textContent(), '.000');
+  assert.equal(await page.locator('.stat-card strong').first().textContent(), '—');
+  await page.getByText('선택한 범위의 기록이 없습니다', { exact: true }).waitFor();
   await page.getByLabel('기록 구분').selectOption('amateur');
   await page.getByRole('button', { name: '통산 기록', exact: true }).click();
   await screenshot('life-amateur-records');
@@ -253,6 +254,7 @@ try {
   assert.equal(s.history.at(-1).roster[0].squad, 'second');
   assert.equal(s.history.at(-1).roster.length, 24);
   await nav('진로 · 계약');
+  await page.getByRole('button', { name: '감독 평가', exact: true }).click();
   assert.equal(await page.locator('.roster-entry').count(), 6);
   await page.getByRole('button', { name: '감독 평가 4페이지', exact: true }).click();
   assert.equal(await page.locator('.roster-period span').first().textContent(), '19차');
@@ -263,6 +265,8 @@ try {
   await page.getByRole('button', { name: '감독 평가 이전 페이지' }).click();
   assert.equal(await page.locator('.roster-period span').first().textContent(), '13차');
   await screenshot('life-manager-decisions');
+  await page.getByRole('button', { name: '계약과 진로', exact: true }).click();
+  await page.locator('summary').filter({ hasText: '연봉 재협상' }).click();
   await page.getByRole('button', { name: '제안 대비 +30%', exact: true }).click();
   const highAsk = Number((await page.locator('.negotiation-odds b').textContent()).match(/\d+/)[0]);
   await page.getByRole('button', { name: '제안 대비 +5%', exact: true }).click();
@@ -276,6 +280,7 @@ try {
     await page.getByRole('button', { name: '연봉 재협상 요청 (1회)', exact: false }).count(),
     0,
   );
+  await page.getByRole('button', { name: '대표팀 · 상무', exact: true }).click();
   await page.getByRole('button', { name: '대표팀 선발 심사', exact: false }).click();
   assert.ok((await saved()).history.at(-1).selections.some((r) => r.kind === 'national'));
   await screenshot('contracts-negotiation-and-selection');
@@ -304,6 +309,7 @@ try {
   assert.ok(sangmuCandidate);
   await importCareer(sangmuCandidate);
   await nav('진로 · 계약');
+  await page.getByRole('button', { name: '대표팀 · 상무', exact: true }).click();
   await page.getByRole('button', { name: '상무 지원', exact: false }).click();
   assert.equal((await saved()).player.military.status, 'scheduled');
   await prepare();
@@ -375,6 +381,7 @@ try {
   }
   await importCareer(veteran);
   await nav('진로 · 계약');
+  await page.locator('summary').filter({ hasText: 'FA · 포스팅' }).click();
   await page.getByRole('button', { name: '포스팅 허가 요청', exact: false }).click();
   assert.equal((await saved()).postingDecision.approved, true);
   await screenshot('contracts-posting-consent');
@@ -496,6 +503,7 @@ try {
     ['시상식', 'awards'],
     ['진로 · 계약', 'career-path'],
     ['커리어 히스토리', 'history'],
+    ['커리어 보관함', 'library'],
   ]) {
     await nav(label);
     assert.equal(
