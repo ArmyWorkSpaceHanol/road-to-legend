@@ -7,6 +7,7 @@ import '@fontsource/barlow-condensed/600.css';
 import '@fontsource/barlow-condensed/700.css';
 import '@fontsource/barlow-condensed/800.css';
 import './styles.css';
+import './ux.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Check, Flag, Medal, Trophy } from 'lucide-react';
 import { careerRecords } from './careerRecords';
 import type { RecordLeague, RecordLevel } from './careerRecords';
@@ -14,12 +13,15 @@ export default function CareerRecords({
   history,
   role,
   level,
+  league,
+  onLeagueChange,
 }: {
   history: Season[];
   role: Role;
   level: RecordLevel;
+  league: RecordLeague;
+  onLeagueChange: (league: RecordLeague) => void;
 }) {
-  const [league, setLeague] = useState<RecordLeague>('all');
   const report = careerRecords(history, role, level, league);
   const pager = usePagination(
     report.achievements.length,
@@ -38,7 +40,7 @@ export default function CareerRecords({
           <select
             aria-label="도전 기록 리그"
             value={league}
-            onChange={(event) => setLeague(event.target.value as RecordLeague)}
+            onChange={(event) => onLeagueChange(event.target.value as RecordLeague)}
           >
             <option value="all">전체 리그</option>
             {(level === 'amateur' ? AMATEUR_LEAGUES : PRO_LEAGUES).map((id) => (

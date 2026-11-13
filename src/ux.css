@@ -1,0 +1,305 @@
+/* Shared readable typography and touch controls. */
+:root {
+  font-size: 14px;
+}
+.sidebar-version,
+.sidebar-version span {
+  color: #bacbbd;
+}
+.season-button > span {
+  color: #d8e5d9;
+  opacity: 1;
+}
+.season-button span:last-child:not(.spinner) {
+  opacity: 1;
+}
+.talent-back .talent-seal svg,
+.talent-back .talent-seal > span > span,
+.talent-back .talent-flip-hint {
+  color: #ecdcad;
+}
+.talent-card {
+  height: auto;
+  min-height: 440px;
+}
+.talent-rotator {
+  display: grid;
+  min-height: 440px;
+}
+.talent-face {
+  position: relative;
+  inset: auto;
+  grid-area: 1 / 1;
+  min-height: 440px;
+}
+.talent-back {
+  display: flex;
+}
+.phase-pill,
+.badge,
+.badge.neutral,
+.roster-decision.retained,
+.path-hero p {
+  color: #475c38;
+}
+button,
+select,
+input:not([type='checkbox']):not([type='file']),
+summary {
+  min-height: 44px;
+}
+.icon-button {
+  min-width: 44px;
+  min-height: 44px;
+}
+.sidebar-close {
+  display: none;
+}
+.segmented {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+.segmented button {
+  flex: 1 0 auto;
+}
+.page-toolbar {
+  flex-wrap: wrap;
+}
+.alert {
+  flex-wrap: wrap;
+}
+.alert > span {
+  flex: 1 1 220px;
+}
+.page-toolbar select,
+.career-records select,
+.growth-filters select {
+  max-width: 100%;
+}
+.sidebar {
+  overflow-y: auto;
+}
+.sidebar nav {
+  flex-shrink: 0;
+}
+.table-scroll:focus-visible {
+  outline: 3px solid #947331;
+  outline-offset: -3px;
+}
+.contract-details {
+  padding: 0 22px;
+}
+.contract-details > summary {
+  cursor: pointer;
+  padding: 18px 0;
+  font-weight: 650;
+  line-height: 1.7;
+}
+.contract-details > .panel {
+  border: 0;
+  margin-bottom: 0;
+  box-shadow: none;
+}
+.contract-details .panel-heading {
+  padding-left: 0;
+  padding-right: 0;
+}
+.save-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+.library-intro > p,
+.library-intro > button {
+  margin: 0 22px 22px;
+  line-height: 1.8;
+}
+.save-slot-body {
+  padding: 0 22px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.save-slot-body p {
+  line-height: 1.8;
+}
+.save-slot-body .button {
+  white-space: normal;
+}
+.backup-row {
+  padding: 20px 22px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.backup-row > div {
+  flex: 1 1 220px;
+  line-height: 1.8;
+}
+.growth-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.growth-filters select {
+  padding: 10px;
+  color: #344d37;
+  border: 1px solid #c8d1bf;
+  background: #fffefa;
+  border-radius: 4px;
+}
+.growth-chart {
+  padding: 8px 18px;
+}
+.growth-chart svg {
+  display: block;
+  width: 100%;
+  min-width: 480px;
+  max-height: 340px;
+}
+.growth-chart text {
+  font-size: 16px;
+  fill: #344d37;
+}
+.growth-comparison {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 0 22px 22px;
+  gap: 14px;
+}
+.growth-comparison article {
+  padding: 18px;
+  background: #f1f4eb;
+  border-radius: 5px;
+}
+.growth-comparison strong {
+  display: block;
+  font: 600 32px var(--font-number);
+  margin: 6px 0;
+}
+.growth-comparison small {
+  font-size: 12px;
+}
+.growth-skills {
+  padding: 0 22px 22px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 22px;
+}
+.growth-skills > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+@media (max-width: 860px) {
+  .save-slot-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  .sidebar-close {
+    display: grid;
+    align-self: flex-end;
+    background: transparent;
+    color: #f7f8f1;
+    margin: -20px -10px 4px 0;
+  }
+  .sidebar {
+    height: 100dvh;
+  }
+  .sidebar-bottom {
+    margin-top: 24px;
+  }
+  .league-stamp {
+    display: none;
+  }
+  .mobile-menu {
+    min-width: 44px;
+  }
+  .topbar .breadcrumb {
+    gap: 6px;
+    min-width: 0;
+  }
+  .topbar-right {
+    gap: 8px;
+  }
+  .save-status {
+    font-size: 12px;
+  }
+  .hero {
+    min-height: auto;
+  }
+  .hero-copy {
+    padding-top: 25px;
+    padding-bottom: 25px;
+  }
+  .hero-corner {
+    display: none;
+  }
+  .hero h2 {
+    font-size: 26px;
+  }
+  .hero-kicker {
+    letter-spacing: 1px;
+  }
+  .section-label {
+    gap: 12px;
+  }
+  .text-link {
+    padding: 8px 0;
+  }
+  .review-steps {
+    gap: 4px;
+    padding: 6px;
+  }
+  .review-steps button {
+    padding: 8px 3px;
+  }
+  .review-steps button b {
+    font-size: 12px;
+  }
+  .pagination {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .growth-comparison {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 0 16px 16px;
+  }
+  .growth-skills {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0 16px 16px;
+  }
+  .contract-details {
+    padding: 0 16px;
+  }
+  .skill-row {
+    min-height: 44px;
+  }
+  .page-toolbar > .segmented {
+    width: 100%;
+  }
+}
+@media (max-width: 380px) {
+  .topbar-right .save-status {
+    display: none;
+  }
+  .life-overview-top {
+    flex-wrap: wrap;
+  }
+  .life-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .hero-kicker {
+    white-space: normal;
+  }
+  .segmented button {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+}

@@ -32,6 +32,19 @@ jobs:
         run: npm test
       - name: Build web game
         run: npm run build
+      - name: Install browser for regression checks
+        run: npx playwright install --with-deps chromium
+      - name: Check gameplay and usability in Chromium
+        run: |
+          npm run dev -- --port 5173 > /tmp/road-to-legend-vite.log 2>&1 &
+          game_server_pid=$!
+          trap 'kill "$game_server_pid"' EXIT
+          for attempt in {1..30}; do
+            if curl -fsS http://localhost:5173/ > /dev/null; then break; fi
+            sleep 1
+          done
+          npm run test:browser
+          npm run test:ux
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3

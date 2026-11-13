@@ -385,7 +385,7 @@ const rosterSchema = z.object({
 });
 export type RosterPeriod = z.infer<typeof rosterSchema>;
 const goalIdSchema = z.enum(['growth', 'performance', 'opportunity']);
-const eventKindSchema = z.enum(['technique', 'chance', 'rest']);
+const eventKindSchema = z.enum(['technique', 'chance', 'rest', 'rival', 'slump', 'comeback']);
 const eventChoiceSchema = z.enum(['bold', 'steady']);
 const goalResultSchema = z.object({
   id: goalIdSchema,
@@ -1227,8 +1227,17 @@ export function seasonGoals(s: GameState) {
 }
 
 export function seasonEventKind(s: GameState): EventKind {
-  if (s.player.injuryDays >= 14 || s.player.fatigue >= 65) return 'rest';
-  return (['technique', 'chance', 'rest'] as const)[((s.seed % 3) + s.year) % 3];
+  if (s.player.injuryDays >= 14) return 'comeback';
+  if (s.player.fatigue >= 65) return 'rest';
+  const latest = s.history.at(-1);
+  if (
+    latest &&
+    (s.player.role === 'batter'
+      ? latest.batting.pa >= 30 && battingRates(latest.batting).ops < 0.6
+      : latest.pitching.outs >= 30 && pitchingRates(latest.pitching).era > 6)
+  )
+    return 'slump';
+  return (['technique', 'chance', 'rest', 'rival'] as const)[((s.seed % 4) + s.year) % 4];
 }
 
 export function seasonEventDetails(s: GameState) {
@@ -1292,6 +1301,57 @@ export function seasonEventDetails(s: GameState) {
         },
       ],
     },
+    rival: {
+      title: pro ? '같은 포지션, 새로운 경쟁자' : '주전 자리를 놓고 펼치는 경쟁',
+      description:
+        '같은 포지션의 선수가 좋은 모습을 보이고 있습니다. 내 강점을 더 밀어붙일까요, 팀이 필요로 하는 기본기를 보완할까요?',
+      options: [
+        {
+          id: 'bold' as const,
+          label: '강점으로 정면 승부',
+          effect: `${batter ? '선구안' : '위기 관리'} +2 · 멘탈 +2${pro ? ' · 감독 신뢰 +4 · 피로 +10' : ''}. 후반기부터 적용됩니다.`,
+        },
+        {
+          id: 'steady' as const,
+          label: '팀에 필요한 기본기 보완',
+          effect: `${batter ? '수비' : '변화구'} +2 · 멘탈 +1${pro ? ' · 감독 신뢰 +1 · 피로 −6' : ''}. 후반기부터 적용됩니다.`,
+        },
+      ],
+    },
+    slump: {
+      title: batter ? '타석에서 길을 잃은 시간' : '마운드에서 흔들리는 리듬',
+      description:
+        '최근 완료한 시즌의 경기력이 기대에 미치지 못했습니다. 코치가 기술 교정과 심리 회복 중 집중할 방향을 묻습니다.',
+      options: [
+        {
+          id: 'bold' as const,
+          label: '기술을 다시 설계하기',
+          effect: `${control} +3 · ${power} −1 · 멘탈 −1${pro ? ' · 피로 +8' : ''}. 후반기부터 적용됩니다.`,
+        },
+        {
+          id: 'steady' as const,
+          label: '자신감과 루틴 되찾기',
+          effect: `멘탈 +3 · ${batter ? '선구안' : '위기 관리'} +1${pro ? ' · 피로 −8' : ''}. 후반기부터 적용됩니다.`,
+        },
+      ],
+    },
+    comeback: {
+      title: '부상 이후, 다시 그라운드로',
+      description:
+        '부상으로 흔들린 시즌을 다시 준비합니다. 경기 감각을 끌어올릴지, 재활과 체력 회복에 더 시간을 쓸지 선택하세요.',
+      options: [
+        {
+          id: 'bold' as const,
+          label: '경기 감각부터 회복',
+          effect: `${control} +2${pro ? ' · 감독 신뢰 +3 · 피로 +10' : ''}. 추가 휴식 없이 후반기를 이어갑니다.`,
+        },
+        {
+          id: 'steady' as const,
+          label: '재활과 체력부터 회복',
+          effect: `${batter ? '스피드' : '체력'} +1 · 멘탈 +1${pro ? ' · 후반기 첫 구간 휴식 · 피로 −25 · 남은 부상 기간 −21일' : ' · 후반기 출장 기회 2경기 감소'}.`,
+        },
+      ],
+    },
   };
   return { kind, ...details[kind] };
 }
@@ -1311,7 +1371,38 @@ function applySeasonChoice(s: GameState, skills: Skills) {
   const change = (key: keyof Skills, amount: number) => {
     skills[key] = clamp(skills[key] + amount, 20, Math.max(skills[key], s.player.potential));
   };
-  if (event.kind === 'technique') {
+  if (event.kind === 'rival') {
+    change(bold ? 'discipline' : 'fielding', 2);
+    change('mental', bold ? 2 : 1);
+    return {
+      trust: pro ? (bold ? 4 : 1) : 0,
+      fatigue: pro ? (bold ? 10 : -6) : 0,
+      recovery: 0,
+      rest: false,
+    };
+  } else if (event.kind === 'slump') {
+    if (bold) {
+      change('contact', 3);
+      change('power', -1);
+      change('mental', -1);
+    } else {
+      change('mental', 3);
+      change('discipline', 1);
+    }
+    return { trust: 0, fatigue: pro ? (bold ? 8 : -8) : 0, recovery: 0, rest: false };
+  } else if (event.kind === 'comeback') {
+    if (bold) change('contact', 2);
+    else {
+      change('speed', 1);
+      change('mental', 1);
+    }
+    return {
+      trust: pro && bold ? 3 : 0,
+      fatigue: pro ? (bold ? 10 : -25) : 0,
+      recovery: bold ? 0 : 21,
+      rest: !bold,
+    };
+  } else if (event.kind === 'technique') {
     change(bold ? 'power' : 'contact', bold ? 4 : 2);
     change(bold ? 'contact' : 'mental', bold ? -2 : 1);
   } else if (event.kind === 'chance') {
@@ -2067,12 +2158,8 @@ export function parseSave(raw: string): GameState {
     };
   }
   const s = stateSchema.parse(value);
-  if (
-    s.seasonEvent &&
-    (s.phase !== 'preseason' ||
-      s.seasonEvent.choice !== null ||
-      s.seasonEvent.kind !== seasonEventKind(s))
-  )
+  // Keep the event that was saved; updated selection rules must not invalidate older checkpoints.
+  if (s.seasonEvent && (s.phase !== 'preseason' || s.seasonEvent.choice !== null))
     throw new Error('시즌 중 선택 정보가 올바르지 않습니다.');
   if (s.player.origin && !TALENTS[s.player.role].some((t) => t.id === s.player.origin!.archetype)) {
     throw new Error('선수 유형과 시작 컨셉이 일치하지 않습니다.');
