@@ -216,6 +216,9 @@ try {
     await records.screenshot({ path: `test-results/ux-library-${width}.png`, fullPage: true });
   }
   await records.setViewportSize({ width: 1440, height: 1000 });
+  await records.waitForFunction(() => document.querySelector('.sidebar').inert === false, null, {
+    timeout: 5000,
+  });
   assert.equal(await records.locator('.sidebar').evaluate((e) => e.inert), false);
   assert.deepEqual(parseSave(JSON.stringify(await saved(records))), await saved(records));
   await records.close();
