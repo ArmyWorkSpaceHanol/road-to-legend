@@ -8,6 +8,7 @@ import { persistCareer, replaceCareer } from './careerStorage';
 import type { SlotId } from './careerStorage';
 import { defaultRoute, useGameRoute } from './navigation';
 import type { Page, Route } from './navigation';
+import { POSITION_LABELS as POSITION } from './playerSetup';
 import type { NewPlayer } from './CareerCreation';
 import Pagination, { usePagination } from './Pagination';
 import { SelectionCenter, SalaryNegotiation, KboContractRules } from './CareerOpportunities';
@@ -105,14 +106,6 @@ const REVIEW_STEPS: { page: Page; label: string }[] = [
   { page: 'awards', label: '시상식' },
   { page: 'market', label: '진로 · 계약' },
 ];
-const POSITION: Record<string, string> = {
-  CF: '중견수',
-  SS: '유격수',
-  '1B': '1루수',
-  C: '포수',
-  SP: '선발투수',
-  CP: '마무리투수',
-};
 const TRAIN_ICONS = [Target, CircleDot, Flame, Zap, Shield, Brain, Activity];
 const planLabel = (s: GameState) =>
   s.player.role === 'pitcher' && PITCHER_LABELS[s.plan]

@@ -45,6 +45,7 @@ jobs:
           done
           npm run test:browser
           npm run test:ux
+          npm run test:creation
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3

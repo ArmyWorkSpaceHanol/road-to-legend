@@ -1,5 +1,12 @@
 import { z } from 'zod';
 import {
+  BATTING_POSITIONS,
+  PITCHING_POSITIONS,
+  reliefPitcher,
+  SCHOOL_NAME_LIMIT,
+  validPosition,
+} from './playerSetup.ts';
+import {
   clubSalaryProposal,
   kboEligibility,
   salaryNegotiationReport,
@@ -186,6 +193,18 @@ export const SUPPORTS: { id: Support; label: string; cost: number; description: 
 ];
 
 const stat = z.number().finite().nonnegative();
+const schoolNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(SCHOOL_NAME_LIMIT)
+  .regex(/^[^\u0000-\u001f\u007f]+$/);
+export function leagueTeams(league: League, school: string) {
+  if (league !== 'HS') return TEAMS[league];
+  const name = schoolNameSchema.parse(school);
+  if (TEAMS.HS.includes(name)) return TEAMS.HS;
+  return [name, ...TEAMS.HS.slice(1)];
+}
 const skillsSchema = z.object({
   contact: stat.max(99),
   power: stat.max(99),
@@ -450,7 +469,7 @@ const legacyStateSchema = z.object({
   player: z.object({
     name: z.string().trim().min(1).max(16),
     role: roleSchema,
-    position: z.enum(['CF', 'SS', '1B', 'C', 'SP', 'CP']),
+    position: z.enum([...BATTING_POSITIONS, ...PITCHING_POSITIONS]),
     age: stat.int().min(18).max(45),
     league: leagueSchema,
     team: z.string(),
@@ -474,6 +493,7 @@ const stateSchema = legacyStateSchema.extend({
     grade: stat.int().max(4),
     squad: squadSchema,
     preferredTeam: z.string(),
+    highSchool: schoolNameSchema.optional(),
     potential: stat.min(65).max(99),
     trust: stat.max(100),
     fatigue: stat.max(100),
@@ -591,6 +611,8 @@ export function makeCareer(
   talent?: TalentCard,
   school = TEAMS.HS[0],
 ): GameState {
+  if (!validPosition(role, position)) throw new Error('선수 유형에 맞는 포지션을 선택해주세요.');
+  const schoolName = schoolNameSchema.parse(school);
   if (talent && (talent.role !== role || !TALENTS[role].some((t) => t.id === talent.archetype))) {
     throw new Error('선수 유형에 맞는 시작 카드를 선택해주세요.');
   }
@@ -615,7 +637,8 @@ export function makeCareer(
       injuryDays: 0,
       entry: null,
       league: 'HS',
-      team: school,
+      team: schoolName,
+      highSchool: schoolName,
       skills:
         talent?.skills ??
         (role === 'batter'
@@ -766,19 +789,28 @@ function simulatePitch(
   skills: Skills,
   league: League,
   games: number,
-  closer: boolean,
+  position: string,
   rng: Random,
 ): Pitching {
   const p = emptyPitch(),
     level = leaguePenalty[league];
-  const appearances = closer ? games * 0.45 : games / 5;
+  const closer = position === 'CP';
+  const reliever = reliefPitcher(position);
+  const appearances = position === 'LR' ? games * 0.22 : reliever ? games * 0.45 : games / 5;
   p.g = Math.floor(appearances) + (rng.next() < appearances % 1 ? 1 : 0);
-  p.gs = closer ? 0 : p.g;
+  p.gs = reliever ? 0 : p.g;
   const stuff = skills.power - level,
     control = skills.contact - level,
     breaking = skills.fielding - level;
   for (let g = 0; g < p.g; g++) {
-    const outs = closer ? int(rng, 2, 4) : int(rng, 12, 16) + Math.floor(skills.speed / 18);
+    const outs =
+      position === 'LR'
+        ? int(rng, 6, 10)
+        : position === 'RP'
+          ? int(rng, 2, 5)
+          : reliever
+            ? int(rng, 2, 4)
+            : int(rng, 12, 16) + Math.floor(skills.speed / 18);
     p.outs += outs;
     let runs = 0;
     const bf = Math.ceil(outs * (1.22 + rng.next() * 0.25));
@@ -803,18 +835,26 @@ function simulatePitch(
       else if (runs === 0) p.hld++;
       else if (runs >= 2 && rng.next() < 0.5) p.l++;
       else if (rng.next() < 0.15) p.w++;
+    } else if (reliever) {
+      if (runs === 0 && rng.next() < (position === 'SU' ? 0.75 : position === 'RP' ? 0.45 : 0.1))
+        p.hld++;
+      else if (position === 'SU' && runs === 0 && rng.next() < 0.1) p.sv++;
+      else if (runs <= 1 && rng.next() < 0.25) p.w++;
+      else if (runs >= 2 && rng.next() < 0.5) p.l++;
     } else if (runs <= 3 && outs >= 15 && rng.next() < 0.62) p.w++;
     else if (runs >= 2 && rng.next() < 0.65) p.l++;
   }
   return p;
 }
-function playerWar(b: Batting, p: Pitching, skills: Skills, role: Role): number {
+function playerWar(b: Batting, p: Pitching, skills: Skills, role: Role, position: string): number {
   if (role === 'batter') {
     const rates = battingRates(b);
     return (
       Math.round(
         clamp(
-          ((rates.ops - 0.59) * b.pa) / 40 + ((skills.fielding - 50) * b.g) / 4000 + b.sb * 0.015,
+          ((rates.ops - 0.59) * b.pa) / 40 +
+            (position === 'DH' ? 0 : ((skills.fielding - 50) * b.g) / 4000) +
+            b.sb * 0.015,
           -3,
           13,
         ) * 10,
@@ -828,7 +868,7 @@ function playerWar(b: Batting, p: Pitching, skills: Skills, role: Role): number 
   );
 }
 function simulateStandings(league: League, team: string, war: number, rng: Random): Standing[] {
-  const rows = TEAMS[league].map((name) => ({
+  const rows = leagueTeams(league, team).map((name) => ({
     team: name,
     w: 0,
     l: 0,
@@ -894,9 +934,13 @@ function makeLeaders(
       mine: true,
     },
   ];
-  TEAMS[s.player.league].forEach((team, index) => {
+  leagueTeams(s.player.league, s.player.team).forEach((team, index) => {
     for (let j = 0; j < 6; j++) {
       const role: Role = j < 4 ? 'batter' : 'pitcher';
+      const position =
+        role === 'batter'
+          ? BATTING_POSITIONS[(index * 4 + j) % BATTING_POSITIONS.length]
+          : PITCHING_POSITIONS[(index * 2 + j - 4) % PITCHING_POSITIONS.length];
       const skillBase = 49 + leaguePenalty[s.player.league] + rng.next() * 29;
       const skills = Object.fromEntries(
         Object.keys(s.player.skills).map((key) => [
@@ -909,7 +953,7 @@ function makeLeaders(
         role === 'batter' ? simulateBat(skills, s.player.league, games, rng) : emptyBat();
       const pitching =
         role === 'pitcher'
-          ? simulatePitch(skills, s.player.league, games, false, rng)
+          ? simulatePitch(skills, s.player.league, games, position, rng)
           : emptyPitch();
       const name = ['HS', 'COLLEGE', 'IND', 'KBO'].includes(s.player.league)
         ? `${lastNames[index % lastNames.length]}${firstNames[(index * 6 + j) % firstNames.length]}`
@@ -920,10 +964,10 @@ function makeLeaders(
         name,
         team,
         role,
-        position: role === 'pitcher' ? 'SP' : ['CF', 'SS', '1B', 'C'][j],
+        position,
         batting,
         pitching,
-        war: playerWar(batting, pitching, skills, role),
+        war: playerWar(batting, pitching, skills, role, position),
         mine: false,
       });
     }
@@ -1071,6 +1115,15 @@ export function needsCareerDecision(s: GameState) {
   );
 }
 export function positionRating(skills: Skills, role: Role, position: string) {
+  if (role === 'pitcher' && reliefPitcher(position))
+    return (
+      skills.contact * 0.25 +
+      skills.power * 0.3 +
+      skills.fielding * 0.2 +
+      skills.speed * 0.08 +
+      skills.discipline * 0.07 +
+      skills.mental * 0.1
+    );
   if (role === 'pitcher')
     return (
       skills.contact * 0.28 +
@@ -1079,7 +1132,7 @@ export function positionRating(skills: Skills, role: Role, position: string) {
       skills.speed * 0.13 +
       skills.mental * 0.1
     );
-  if (['SS', 'C'].includes(position))
+  if (['SS', 'C', '2B'].includes(position))
     return (
       skills.fielding * 0.32 +
       skills.contact * 0.24 +
@@ -1087,6 +1140,10 @@ export function positionRating(skills: Skills, role: Role, position: string) {
       skills.speed * 0.12 +
       skills.discipline * 0.12 +
       skills.mental * 0.08
+    );
+  if (position === 'DH')
+    return (
+      skills.contact * 0.34 + skills.power * 0.36 + skills.discipline * 0.2 + skills.mental * 0.1
     );
   return (
     skills.contact * 0.3 +
@@ -1206,7 +1263,16 @@ export function seasonGoals(s: GameState) {
     {
       id: 'performance' as const,
       label: batter ? '안타로 증명하기' : '마운드 경험 쌓기',
-      target: Math.round(games * (batter ? 0.7 : s.player.position === 'CP' ? 0.35 : 0.85)),
+      target: Math.round(
+        games *
+          (batter
+            ? 0.7
+            : s.player.position === 'LR'
+              ? 0.5
+              : reliefPitcher(s.player.position)
+                ? 0.35
+                : 0.85),
+      ),
       unit: batter ? '안타' : '이닝',
       description: pro
         ? '1·2군 기록을 합산해 도전합니다.'
@@ -1217,7 +1283,16 @@ export function seasonGoals(s: GameState) {
       label: pro ? '1군에 내 자리 만들기' : '꾸준한 출전',
       target: pro
         ? 30
-        : Math.round(games * (batter ? 0.65 : s.player.position === 'CP' ? 0.3 : 0.15)),
+        : Math.round(
+            games *
+              (batter
+                ? 0.65
+                : s.player.position === 'LR'
+                  ? 0.2
+                  : reliefPitcher(s.player.position)
+                    ? 0.3
+                    : 0.15),
+          ),
       unit: pro ? '1군 등록일' : batter ? '출장 경기' : '등판',
       description: pro
         ? '이번 시즌 1군에 30일 이상 등록하기'
@@ -1494,7 +1569,7 @@ function simulateRoster(s: GameState, skills: Skills, rng: Random, periods = 24)
         : emptyBat();
     const p =
       s.player.role === 'pitcher'
-        ? simulatePitch(adjusted, s.player.league, available, s.player.position === 'CP', rng)
+        ? simulatePitch(adjusted, s.player.league, available, s.player.position, rng)
         : emptyPitch();
     addStats(before === 'first' ? batting : minorBatting, b);
     addStats(before === 'first' ? pitching : minorPitching, p);
@@ -1576,7 +1651,7 @@ function scoutEvaluation(s: GameState) {
     appearances = h
       ? s.player.role === 'batter'
         ? h.batting.g
-        : h.pitching.g * (s.player.position === 'CP' ? 2 : 5)
+        : h.pitching.g * (s.player.position === 'LR' ? 3 : reliefPitcher(s.player.position) ? 2 : 5)
       : 0;
   const exposure = clamp((appearances / scheduled) * 100, 0, 100);
   const readiness = positionRating(s.player.skills, s.player.role, s.player.position);
@@ -1853,7 +1928,7 @@ function simulateSeason(input: GameState, halfway = false) {
           else
             addStats(
               pitching,
-              simulatePitch(skills, s.player.league, count, s.player.position === 'CP', rng),
+              simulatePitch(skills, s.player.league, count, s.player.position, rng),
             );
         };
         if (s.seasonEvent) {
@@ -1905,7 +1980,7 @@ export function playSeason(input: GameState): GameState {
   const growth = Object.fromEntries(
     Object.entries(skills).map(([k, v]) => [k, v - s.player.skills[k as keyof Skills]]),
   ) as Skills;
-  const war = playerWar(sim.batting, sim.pitching, skills, s.player.role),
+  const war = playerWar(sim.batting, sim.pitching, skills, s.player.role, s.player.position),
     standings = simulateStandings(s.player.league, s.player.team, war, rng);
   const place = standings.findIndex((t) => t.team === s.player.team) + 1;
   const notes = [
@@ -2175,12 +2250,13 @@ export function parseSave(raw: string): GameState {
     p.w + p.l + p.sv + p.hld <= p.g &&
     p.so + p.bb + p.h + p.hbp <= p.bf;
   if (
-    !TEAMS[s.player.league].includes(s.player.team) ||
+    !leagueTeams(s.player.league, s.player.team).includes(s.player.team) ||
     !TEAMS.KBO.includes(s.player.preferredTeam) ||
     !TEAMS.COLLEGE.includes(s.collegeTeam) ||
-    (s.player.role === 'batter'
-      ? ['SP', 'CP'].includes(s.player.position)
-      : !['SP', 'CP'].includes(s.player.position))
+    !validPosition(s.player.role, s.player.position) ||
+    (s.player.league === 'HS' &&
+      s.player.highSchool !== undefined &&
+      s.player.team !== s.player.highSchool)
   )
     throw new Error('올바르지 않은 선수 정보입니다.');
   const validStage = (p: { stage: CareerStage; grade: number; league: League }) =>
@@ -2255,13 +2331,14 @@ export function parseSave(raw: string): GameState {
       )
         throw new Error('감독 평가 기록이 올바르지 않습니다.');
     }
-    const teams = TEAMS[h.league];
+    const teams = leagueTeams(h.league, h.team);
     if (
       h.standings.length !== teams.length ||
       new Set(h.standings.map((t) => t.team)).size !== teams.length ||
       h.standings.some((t) => !teams.includes(t.team)) ||
       !teams.includes(h.team) ||
-      !h.leaders.length
+      !h.leaders.length ||
+      (h.league === 'HS' && s.player.highSchool !== undefined && h.team !== s.player.highSchool)
     )
       throw new Error('리그 정보가 손상된 저장 파일입니다.');
   }

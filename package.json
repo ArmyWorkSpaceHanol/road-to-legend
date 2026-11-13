@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:browser": "node scripts/smoke.mjs",
     "test:ux": "node scripts/usability.mjs",
+    "test:creation": "node scripts/creation.mjs",
     "format": "prettier --write src scripts *.json *.ts *.md index.html"
   },
   "dependencies": {

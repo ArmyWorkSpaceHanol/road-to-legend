@@ -19,6 +19,7 @@ import {
   TEAMS,
 } from './game';
 import type { Role, Skills, TalentCard, TalentDraft } from './game';
+import { POSITIONS, SCHOOL_NAME_LIMIT } from './playerSetup';
 
 export type NewPlayer = {
   name: string;
@@ -26,18 +27,6 @@ export type NewPlayer = {
   position: string;
   team: string;
   school: string;
-};
-const POSITIONS: Record<Role, [string, string][]> = {
-  batter: [
-    ['CF', '중견수'],
-    ['SS', '유격수'],
-    ['1B', '1루수'],
-    ['C', '포수'],
-  ],
-  pitcher: [
-    ['SP', '선발투수'],
-    ['CP', '마무리투수'],
-  ],
 };
 const ICONS = {
   slugger: Flame,
@@ -83,6 +72,7 @@ export default function CareerCreation({
   }, [step]);
 
   const deal = () => {
+    setPlayer({ ...player, name: player.name.trim(), school: player.school.trim() });
     if (!draft || draft.role !== player.role) {
       setDraft(generateTalentDraft(player.role));
       setRevealed([]);
@@ -111,7 +101,7 @@ export default function CareerCreation({
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (player.name.trim()) deal();
+              if (player.name.trim() && player.school.trim()) deal();
             }}
           >
             <label>
@@ -137,7 +127,7 @@ export default function CareerCreation({
                     setPlayer({ ...player, role, position: role === 'batter' ? 'CF' : 'SP' });
                   }}
                 >
-                  <option value="batter">타자</option>
+                  <option value="batter">야수 · 타자</option>
                   <option value="pitcher">투수</option>
                 </select>
               </label>
@@ -158,15 +148,27 @@ export default function CareerCreation({
             </div>
             <label>
               출발할 고등학교
-              <select
+              <input
                 aria-label="출발 고등학교"
+                aria-describedby="school-hint"
+                list="high-school-suggestions"
+                required
+                maxLength={SCHOOL_NAME_LIMIT}
+                pattern=".*\S.*"
+                title="공백을 제외한 고등학교 이름을 입력해주세요"
+                placeholder="고등학교 이름을 직접 입력하세요"
                 value={player.school}
                 onChange={(e) => setPlayer({ ...player, school: e.target.value })}
-              >
+              />
+              <datalist id="high-school-suggestions">
                 {TEAMS.HS.map((t) => (
-                  <option key={t}>{t}</option>
+                  <option key={t} value={t} />
                 ))}
-              </select>
+              </datalist>
+              <small id="school-hint">
+                원하는 학교를 직접 입력하거나 추천 학교를 선택하세요. 최대 {SCHOOL_NAME_LIMIT}자까지
+                입력할 수 있습니다.
+              </small>
             </label>
             <label>
               선호 프로 구단 · 지명 구단과는 다를 수 있습니다
