@@ -961,6 +961,23 @@ export default function App() {
             <div role="alert" className="alert">
               <Shield size={18} />
               <span>{saveError}</span>
+              {(!initial.error || saveError !== initial.error) && (
+                <button
+                  onClick={() => {
+                    try {
+                      persistCareer(localStorage, state);
+                      setSaveError(null);
+                      notify('현재 커리어를 저장했습니다.');
+                    } catch {
+                      notify(
+                        '아직 저장하지 못했습니다. 파일로 백업한 뒤 저장 공간을 확인해주세요.',
+                      );
+                    }
+                  }}
+                >
+                  저장 다시 시도
+                </button>
+              )}
               <button onClick={() => inputRef.current?.click()}>백업 불러오기</button>
             </div>
           )}
@@ -1799,6 +1816,7 @@ export default function App() {
               state={state}
               disabled={busy}
               canSave={!saveError && hasCareer}
+              canExport={hasCareer && (!initial.error || saveError !== initial.error)}
               onLoad={loadSlot}
             />
           )}

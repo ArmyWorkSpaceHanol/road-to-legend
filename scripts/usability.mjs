@@ -96,6 +96,28 @@ try {
   await page.evaluate(() => {
     Storage.prototype.setItem = window.originalSetItem;
   });
+  await page.evaluate(() => {
+    Storage.prototype.setItem = function (key, value) {
+      if (key === 'road-to-legend:v1') throw new DOMException('Full', 'QuotaExceededError');
+      return window.originalSetItem.call(this, key, value);
+    };
+  });
+  await page.getByRole('button', { name: /제구력 연마/ }).click();
+  await page.getByRole('alert').waitFor();
+  await nav(page, '커리어 보관함');
+  assert.equal(
+    await page.getByRole('button', { name: '현재 커리어 파일 백업', exact: true }).isEnabled(),
+    true,
+  );
+  await page.setViewportSize({ width: 320, height: 844 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.evaluate(() => {
+    Storage.prototype.setItem = window.originalSetItem;
+  });
+  await page.getByRole('button', { name: '저장 다시 시도', exact: true }).click();
+  await page.getByRole('alert').waitFor({ state: 'hidden' });
+  assert.equal((await saved(page)).plan, 'contact');
 
   // Starting a new character automatically archives the outgoing one.
   await page.getByRole('button', { name: '새 커리어', exact: true }).click();

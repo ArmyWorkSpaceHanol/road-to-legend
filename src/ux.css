@@ -65,6 +65,12 @@ summary {
 .page-toolbar {
   flex-wrap: wrap;
 }
+.alert {
+  flex-wrap: wrap;
+}
+.alert > span {
+  flex: 1 1 220px;
+}
 .page-toolbar select,
 .career-records select,
 .growth-filters select {

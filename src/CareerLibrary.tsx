@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Download, FolderOpen, Save } from 'lucide-react';
 import { activeSlot, readBackups, saveToSlot, SLOT_IDS, slotKey } from './careerStorage';
 import type { SlotId } from './careerStorage';
-import { parseSave, stageLabel } from './game';
+import { parseSave, SAVE_KEY, stageLabel } from './game';
 import type { GameState } from './game';
 
 function readCareer(raw: string | null) {
@@ -25,11 +25,13 @@ export default function CareerLibrary({
   state,
   disabled,
   canSave = true,
+  canExport = true,
   onLoad,
 }: {
   state: GameState;
   disabled: boolean;
   canSave?: boolean;
+  canExport?: boolean;
   onLoad: (state: GameState, slot: SlotId | null) => void;
 }) {
   const [revision, refresh] = useState(0);
@@ -39,7 +41,9 @@ export default function CareerLibrary({
   let slots: { id: SlotId; raw: string | null; career: GameState | null }[] = [];
   let backups: ReturnType<typeof readBackups> = [];
   let readError = '';
+  let originalRaw: string | null = null;
   try {
+    originalRaw = localStorage.getItem(SAVE_KEY);
     active = activeSlot(localStorage);
     slots = SLOT_IDS.map((id) => {
       const raw = localStorage.getItem(slotKey(id));
@@ -79,7 +83,7 @@ export default function CareerLibrary({
           <FolderOpen size={24} />
         </div>
         <p>
-          {canSave ? (
+          {canExport ? (
             <>
               현재 선수: <b>{state.player.name}</b> ·{' '}
               {active ? `${active}번 슬롯에 자동 저장 중` : '현재 커리어에 자동 저장 중'}. 슬롯을
@@ -91,7 +95,7 @@ export default function CareerLibrary({
         </p>
         <button
           className="button secondary"
-          disabled={!canSave}
+          disabled={!canExport}
           onClick={() =>
             download(
               JSON.stringify(state),
@@ -102,6 +106,14 @@ export default function CareerLibrary({
           <Download size={16} />
           현재 커리어 파일 백업
         </button>
+        {!canExport && originalRaw && (
+          <button
+            className="button secondary"
+            onClick={() => download(originalRaw!, 'road-to-legend-original.json')}
+          >
+            기존 저장 원본 내려받기
+          </button>
+        )}
       </section>
       {(error || readError) && (
         <p className="alert" role="alert">
