@@ -22,6 +22,7 @@ const saved = () => page.evaluate(() => JSON.parse(localStorage.getItem('road-to
 await mkdir('test-results', { recursive: true });
 try {
   await page.goto(process.env.BASE_URL || 'http://localhost:5173');
+  await page.getByRole('button', { name: '나의 커리어 시작', exact: true }).click();
   let first = true;
   for (const [role, positions] of Object.entries(expected)) {
     for (const position of positions) {

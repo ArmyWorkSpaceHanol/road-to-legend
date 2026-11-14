@@ -147,6 +147,7 @@ const chooseCard = async (capture) => {
 await mkdir('test-results', { recursive: true });
 try {
   await page.goto(baseURL);
+  await page.getByRole('button', { name: '나의 커리어 시작', exact: true }).click();
   await page.getByRole('dialog').waitFor();
   assert.equal(await saved(), null);
   await page.getByLabel('선수 이름').fill('김전설');
@@ -533,6 +534,7 @@ try {
     coldPage = await cold.newPage();
   coldPage.on('pageerror', (e) => errors.push(e.message));
   await coldPage.goto(baseURL);
+  await coldPage.getByRole('button', { name: '나의 커리어 시작', exact: true }).click();
   await coldPage.getByRole('button', { name: '저장한 커리어 불러오기' }).waitFor();
   coldPage.once('dialog', (dialog) => dialog.accept());
   await coldPage.getByLabel('저장 파일 선택').setInputFiles({

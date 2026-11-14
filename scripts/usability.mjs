@@ -229,6 +229,7 @@ try {
     first,
   );
   await cold.reload();
+  await cold.getByRole('button', { name: '나의 커리어 시작', exact: true }).click();
   await cold.getByRole('button', { name: '커리어 보관함 열기', exact: true }).click();
   await cold.getByRole('button', { name: '1번 슬롯 불러오기', exact: true }).click();
   assert.equal((await saved(cold)).player.name, '슬롯 타자');
