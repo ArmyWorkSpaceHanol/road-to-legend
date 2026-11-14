@@ -1,4 +1,4 @@
-import { ArrowRight, Cloud, Fingerprint, Layers3, ShieldCheck, Trophy } from 'lucide-react';
+import { ArrowRight, Cloud, Fingerprint, Layers3, ShieldCheck, Trophy, Upload } from 'lucide-react';
 import Stadium from './Stadium';
 import { hostedService, SERVICE_URL } from './cloudSave';
 
@@ -62,7 +62,12 @@ export default function ServiceLanding({
                 나의 커리어 시작
                 <ArrowRight size={20} />
               </button>
-              {!name && (
+              {name ? (
+                <button className="service-secondary" onClick={onAccount}>
+                  <Upload size={18} />
+                  저장 파일로 이어하기
+                </button>
+              ) : (
                 <a href={login} target="_top" className="service-secondary">
                   <Cloud size={18} />
                   로그인하고 이어하기

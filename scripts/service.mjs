@@ -134,6 +134,9 @@ try {
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await page.getByRole('button', { name: /클라우드 기록 이어하기/ }).waitFor();
   assert.equal(await page.getByText('다른 기기 선수 · 2026년 · CF', { exact: true }).count(), 1);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('dialog[open]').count(), 0);
+  await page.locator('.sync-alert').click();
   await page.getByRole('button', { name: /클라우드 기록 이어하기/ }).click();
   await page.getByText('클라우드 저장됨', { exact: true }).waitFor();
   await page.getByText('계정의 게임 데이터 삭제', { exact: true }).click();

@@ -212,6 +212,9 @@ function AccountExperience({ user }: { user: User }) {
       window.removeEventListener('storage', storageChanged);
     };
   }, [sync, user.id]);
+  useEffect(() => {
+    if (snapshot.status === 'conflict') setAccount(true);
+  }, [snapshot.status]);
   const act = async (task: () => Promise<void>) => {
     setWorking(true);
     setMessage('');
@@ -229,7 +232,10 @@ function AccountExperience({ user }: { user: User }) {
     if (cloud) {
       exportBundle(captureBundle(sync.storage));
       sync.useCloud(remote);
-    } else await sync.useDevice(remote);
+    } else {
+      if (remote.bundle) exportBundle(remote.bundle);
+      await sync.useDevice(remote);
+    }
     setMount((n) => n + 1);
   };
   if (snapshot.status === 'loading') return <Loading text="나의 클럽하우스를 불러오는 중" />;
@@ -270,13 +276,8 @@ function AccountExperience({ user }: { user: User }) {
           <RefreshCw size={15} />
         </button>
       )}
-      {(account || snapshot.status === 'conflict') && (
-        <ServiceDialog
-          title="나의 계정과 저장"
-          onClose={() => {
-            if (snapshot.status !== 'conflict') setAccount(false);
-          }}
-        >
+      {account && (
+        <ServiceDialog title="나의 계정과 저장" onClose={() => setAccount(false)}>
           <div className="account-identity">
             <span className="account-avatar">{user.name.slice(0, 1)}</span>
             <div>
@@ -295,10 +296,7 @@ function AccountExperience({ user }: { user: User }) {
           </div>
           {snapshot.status === 'conflict' && snapshot.remote ? (
             <div className="conflict-choices">
-              <p>
-                두 기록을 합칠 수 없습니다. 클라우드 기록을 선택하면 현재 기기 기록은 파일로 먼저
-                내려받습니다.
-              </p>
+              <p>두 기록을 합칠 수 없습니다. 선택하지 않은 쪽의 기록은 파일로 먼저 내려받습니다.</p>
               <button disabled={working} onClick={() => void act(() => replace(true))}>
                 <Cloud size={20} />
                 <div>
