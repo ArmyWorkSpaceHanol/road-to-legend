@@ -811,7 +811,7 @@ export default function App({
             <CircleHelp size={16} /> 플레이 가이드 <ArrowUpRight size={14} />
           </button>
           <div className="sidebar-version">
-            ROAD TO LEGEND <span>v0.4</span>
+            ROAD TO LEGEND <span>v0.5</span>
           </div>
         </div>
       </aside>

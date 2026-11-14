@@ -18,6 +18,9 @@ try {
   landing.on('pageerror', (e) => errors.push(e.message));
   await landing.goto(baseURL);
   await landing.getByRole('heading', { name: /당신의 야구가/ }).waitFor();
+  await landing
+    .locator('.stadium-model')
+    .evaluate((node) => Promise.all(node.getAnimations().map((animation) => animation.finished)));
   for (const width of [1440, 760, 390, 320]) {
     await landing.setViewportSize({ width, height: 900 });
     assert.equal(
@@ -116,7 +119,7 @@ try {
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify(makeCareer('오프라인 선수'))),
   });
-  await page.getByText('기기에 저장됨', { exact: true }).waitFor();
+  await page.getByRole('dialog').getByText('기기에 저장됨', { exact: true }).waitFor();
   assert.equal(JSON.parse(record.bundle.active).player.name, '가져온 선수');
   offline = false;
   await page.getByRole('button', { name: '클라우드 저장 다시 시도' }).click();
