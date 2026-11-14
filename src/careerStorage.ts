@@ -6,7 +6,7 @@ export type SlotId = (typeof SLOT_IDS)[number];
 export const ACTIVE_SLOT_KEY = 'road-to-legend:active-slot';
 export const BACKUPS_KEY = 'road-to-legend:backups:v1';
 export const slotKey = (id: SlotId) => `road-to-legend:slot:${id}`;
-type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+export type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 export type CareerBackup = { raw: string; savedAt: number; reason: string };
 export function activeSlot(storage: StorageLike): SlotId | null {
   const value = storage.getItem(ACTIVE_SLOT_KEY);

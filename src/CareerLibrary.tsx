@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Download, FolderOpen, Save } from 'lucide-react';
 import { activeSlot, readBackups, saveToSlot, SLOT_IDS, slotKey } from './careerStorage';
-import type { SlotId } from './careerStorage';
+import type { SlotId, StorageLike } from './careerStorage';
 import { parseSave, SAVE_KEY, stageLabel } from './game';
 import type { GameState } from './game';
 
@@ -22,12 +22,14 @@ function download(raw: string, name: string) {
   URL.revokeObjectURL(url);
 }
 export default function CareerLibrary({
+  storage = localStorage,
   state,
   disabled,
   canSave = true,
   canExport = true,
   onLoad,
 }: {
+  storage?: StorageLike;
   state: GameState;
   disabled: boolean;
   canSave?: boolean;
@@ -43,19 +45,19 @@ export default function CareerLibrary({
   let readError = '';
   let originalRaw: string | null = null;
   try {
-    originalRaw = localStorage.getItem(SAVE_KEY);
-    active = activeSlot(localStorage);
+    originalRaw = storage.getItem(SAVE_KEY);
+    active = activeSlot(storage);
     slots = SLOT_IDS.map((id) => {
-      const raw = localStorage.getItem(slotKey(id));
+      const raw = storage.getItem(slotKey(id));
       return { id, raw, career: readCareer(raw) };
     });
-    backups = readBackups(localStorage);
+    backups = readBackups(storage);
   } catch (e) {
     readError = e instanceof Error ? e.message : '보관함을 읽지 못했습니다.';
   }
   const store = (id: SlotId) => {
     try {
-      saveToSlot(localStorage, id, state);
+      saveToSlot(storage, id, state);
       refresh(revision + 1);
       setError('');
       setMessage(`${id}번 슬롯에 저장했습니다. 앞으로 진행 내용도 자동 저장됩니다.`);

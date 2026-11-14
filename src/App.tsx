@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import CareerCreation from './CareerCreation';
+import Stadium from './Stadium';
 import CareerRecords from './CareerRecords';
 import CareerLibrary from './CareerLibrary';
 import CareerGrowth from './CareerGrowth';
 import { persistCareer, replaceCareer } from './careerStorage';
-import type { SlotId } from './careerStorage';
+import type { SlotId, StorageLike } from './careerStorage';
 import { defaultRoute, useGameRoute } from './navigation';
 import type { Page, Route } from './navigation';
 import { POSITION_LABELS as POSITION } from './playerSetup';
@@ -111,9 +112,9 @@ const planLabel = (s: GameState) =>
   s.player.role === 'pitcher' && PITCHER_LABELS[s.plan]
     ? PITCHER_LABELS[s.plan]![0]
     : PLANS.find((p) => p.id === s.plan)!.label;
-function load(): { state: GameState; error: string | null; exists: boolean } {
+function load(storage: StorageLike): { state: GameState; error: string | null; exists: boolean } {
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
+    const raw = storage.getItem(SAVE_KEY);
     return { state: raw ? parseSave(raw) : makeCareer(), error: null, exists: !!raw };
   } catch {
     return {
@@ -138,62 +139,7 @@ function Baseball({ className = '' }: { className?: string }) {
     </svg>
   );
 }
-function Ballpark() {
-  return (
-    <svg className="ballpark" viewBox="0 0 510 360" fill="none" aria-hidden="true">
-      <defs>
-        <linearGradient id="grass" x2="0" y2="1">
-          <stop stopColor="#6c9b67" stopOpacity=".35" />
-          <stop offset="1" stopColor="#6c9b67" stopOpacity=".05" />
-        </linearGradient>
-        <pattern
-          id="stripe"
-          width="42"
-          height="42"
-          patternTransform="rotate(-35)"
-          patternUnits="userSpaceOnUse"
-        >
-          <path d="M0 0h21v42H0z" fill="#c6ddaf" fillOpacity=".04" />
-        </pattern>
-      </defs>
-      <path d="M255 326 31 133C120-42 389-42 479 133Z" fill="url(#grass)" />
-      <path d="M255 326 31 133C120-42 389-42 479 133Z" fill="url(#stripe)" />
-      <path d="M255 326 31 133C120-42 389-42 479 133Z" stroke="#9dbb8d" strokeOpacity=".4" />
-      <path
-        d="m255 306-95-95 95-95 95 95z"
-        fill="#b7a17c"
-        fillOpacity=".3"
-        stroke="#dfddba"
-        strokeOpacity=".55"
-      />
-      <path d="m255 278-66-67 66-66 67 66z" fill="#59875b" fillOpacity=".75" />
-      <path
-        d="M255 326V211m0 0L31 133m224 78 224-78"
-        stroke="#f5f1d9"
-        strokeOpacity=".15"
-        strokeDasharray="4 8"
-      />
-      <circle cx="255" cy="211" r="11" fill="#ccb991" fillOpacity=".6" />
-      <path
-        d="m255 308 7-7-7-7-7 7zm-95-97 6-6-6-6-6 6zm95-95 6 6-6 6-6-6zm95 95-6-6 6-6 6 6z"
-        fill="#f8f4db"
-      />
-      <circle cx="255" cy="211" r="47" stroke="#e3e6cb" strokeOpacity=".1" />
-      <path d="M61 123a216 216 0 0 1 388 0" stroke="#a5c494" strokeOpacity=".17" strokeWidth="15" />
-      <text
-        x="255"
-        y="58"
-        textAnchor="middle"
-        fill="#cce0b8"
-        fillOpacity=".5"
-        fontSize="12"
-        letterSpacing="5"
-      >
-        THE FIELD IS YOURS
-      </text>
-    </svg>
-  );
-}
+
 function Panel({
   title,
   eyebrow,
@@ -423,8 +369,14 @@ function Standings({
   );
 }
 
-export default function App() {
-  const [initial] = useState(load),
+export default function App({
+  storage = localStorage,
+  accountControl,
+}: {
+  storage?: StorageLike;
+  accountControl?: ReactNode;
+}) {
+  const [initial] = useState(() => load(storage)),
     [state, setState] = useState(initial.state);
   const { route, updateRoute } = useGameRoute(
     defaultRoute(
@@ -558,7 +510,7 @@ export default function App() {
     if (!hasCareer) return;
     if (initial.error && saveError === initial.error) return;
     try {
-      persistCareer(localStorage, state);
+      persistCareer(storage, state);
       setSaveError(null);
     } catch {
       setSaveError('자동 저장이 실패했습니다. 저장 공간을 확인하고 백업 파일을 내려받아주세요.');
@@ -688,7 +640,7 @@ export default function App() {
         )
       )
         return;
-      replaceCareer(localStorage, imported, '파일 불러오기 전');
+      replaceCareer(storage, imported, '파일 불러오기 전');
       setSaveError(null);
       setHasCareer(true);
       simulationId.current++;
@@ -714,7 +666,7 @@ export default function App() {
       newPlayer.school,
     );
     try {
-      replaceCareer(localStorage, next, '새 커리어 시작 전');
+      replaceCareer(storage, next, '새 커리어 시작 전');
     } catch {
       notify('자동 백업에 실패했습니다. 현재 커리어를 파일로 백업하고 저장 공간을 확인해주세요.');
       return;
@@ -729,12 +681,7 @@ export default function App() {
     notify('새로운 야구 인생이 시작됩니다.');
   };
   const loadSlot = (next: GameState, slot: SlotId | null) => {
-    replaceCareer(
-      localStorage,
-      next,
-      slot ? `${slot}번 슬롯 불러오기 전` : '자동 백업 복원 전',
-      slot,
-    );
+    replaceCareer(storage, next, slot ? `${slot}번 슬롯 불러오기 전` : '자동 백업 복원 전', slot);
     simulationId.current++;
     setState(next);
     setHasCareer(true);
@@ -864,7 +811,7 @@ export default function App() {
             <CircleHelp size={16} /> 플레이 가이드 <ArrowUpRight size={14} />
           </button>
           <div className="sidebar-version">
-            ROAD TO LEGEND <span>v0.4</span>
+            ROAD TO LEGEND <span>v0.5</span>
           </div>
         </div>
       </aside>
@@ -886,6 +833,7 @@ export default function App() {
             <b>{NAV.find((n) => n.id === page)?.label}</b>
           </div>
           <div className="topbar-right">
+            {accountControl}
             <span className={`save-status ${saveError ? 'error' : ''}`}>
               <span className="live-dot" />
               {saveError ? '저장 확인 필요' : '자동 저장됨'}
@@ -958,7 +906,7 @@ export default function App() {
                 <button
                   onClick={() => {
                     try {
-                      persistCareer(localStorage, state);
+                      persistCareer(storage, state);
                       setSaveError(null);
                       notify('현재 커리어를 저장했습니다.');
                     } catch {
@@ -1063,7 +1011,7 @@ export default function App() {
                     </div>
                   </div>
                 </div>
-                <Ballpark />
+                <Stadium compact />
                 <span className="hero-corner">
                   EST. 2026 <span>✦</span> YOUR OWN LEGACY
                 </span>
@@ -1806,6 +1754,7 @@ export default function App() {
 
           {page === 'saves' && (
             <CareerLibrary
+              storage={storage}
               state={state}
               disabled={busy}
               canSave={!saveError && hasCareer}
