@@ -31,7 +31,7 @@ export class AccountSync {
   constructor(
     readonly userId: string,
     private base: StorageLike,
-    private request: typeof fetch = fetch,
+    private request: typeof fetch = (...args) => globalThis.fetch(...args),
   ) {
     this.metaKey = `road-to-legend:sync:${encodeURIComponent(userId)}`;
     let meta;

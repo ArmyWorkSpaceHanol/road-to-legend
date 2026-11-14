@@ -43,10 +43,10 @@ jobs:
             if curl -fsS http://localhost:5173/ > /dev/null; then break; fi
             sleep 1
           done
+          npm run test:service
           npm run test:browser
           npm run test:ux
           npm run test:creation
-          npm run test:service
       - name: Keep browser screenshots for review
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

@@ -10,9 +10,11 @@ const browser = await chromium.launch({
   args: ['--no-sandbox'],
 });
 const errors = [];
+let activePage;
 await mkdir('test-results', { recursive: true });
 try {
   const landing = await browser.newPage();
+  activePage = landing;
   landing.on('pageerror', (e) => errors.push(e.message));
   await landing.goto(baseURL);
   await landing.getByRole('heading', { name: /당신의 야구가/ }).waitFor();
@@ -65,6 +67,7 @@ try {
     return route.fulfill({ response });
   });
   const page = await context.newPage();
+  activePage = page;
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(origin);
   await page.getByRole('button', { name: '나의 커리어 시작', exact: true }).click();
@@ -140,6 +143,13 @@ try {
   console.log(
     'PASS: responsive 3D landing, reduced motion, signed-in account UI, cloud save/reload, legacy file import, offline retry, conflict selection, full export, and account-data deletion.',
   );
+} catch (error) {
+  if (activePage && !activePage.isClosed()) {
+    console.error('Service UI failure:', await activePage.locator('body').innerText());
+    console.error('Browser errors:', errors);
+    await activePage.screenshot({ path: 'test-results/service-failure.png', fullPage: true });
+  }
+  throw error;
 } finally {
   await browser.close();
 }

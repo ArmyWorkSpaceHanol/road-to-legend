@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { handleApi } from '../server/api';
@@ -67,6 +67,27 @@ afterEach(() => {
   sqlite.exec('DELETE FROM career_saves');
 });
 describe('authenticated cloud careers', () => {
+  it('calls browser fetch with its global receiver', async () => {
+    const request = client('a');
+    const mocked = vi.spyOn(globalThis, 'fetch').mockImplementation(function (
+      this: unknown,
+      ...args
+    ) {
+      expect(this).toBe(globalThis);
+      return request(...args);
+    });
+    try {
+      const account = new AccountSync('a', new MemoryStorage());
+      controllers.push(account);
+      await account.initialize();
+      expect(account.snapshot.status).toBe('saved');
+      account.storage.setItem(SAVE_KEY, raw('브라우저 저장'));
+      await account.flush();
+      expect(account.snapshot.status).toBe('saved');
+    } finally {
+      mocked.mockRestore();
+    }
+  });
   it('requires server identity and same-origin writes; ignores client-selected owners', async () => {
     expect(
       (await handleApi(new Request('https://test.chatgpt.site/api/career'), { DB })).status,
